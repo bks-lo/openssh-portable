@@ -54,31 +54,31 @@ References -
 
 
 
-±àÒë
+ç¼–è¯‘
 	1. openssl
 		wget https://www.openssl.org/source/openssl-1.1.1u.tar.gz
 		tar -xf openssl-1.1.1m.tar.gz
 		cd openssl-1.1.1m
 		
-		# ÅäÖÃ
+		# é…ç½®
 		./config --prefix=/usr/local/openssl shared
-		# ±àÒë
+		# ç¼–è¯‘
 		make
-		# °²×°
+		# å®‰è£…
 		make install 
 		
 	2. zlib
 		wget https://www.zlib.net/current/zlib.tar.gz
-		# ½âÑ¹
+		# è§£å‹
 		tar -xf zlib-1.2.11.tar.gz
-		# ½øÈëÔ´ÂëÄ¿Â¼
+		# è¿›å…¥æºç ç›®å½•
 		cd zlib-1.2.11
 		
-		# Ô¤±àÒë
+		# é¢„ç¼–è¯‘
 		./configure --prefix=/usr/local/zlib
-		# ±àÒë
+		# ç¼–è¯‘
 		make
-		# °²×°
+		# å®‰è£…
 		make install
 		
 		sudo apt -y install libz-dev
@@ -89,20 +89,20 @@ References -
 		cd openssh-9.3p2
 
 		autoreconf
-		/* ¹Ø±ÕÓÅ»¯ */
+		/* å…³é—­ä¼˜åŒ– */
 		./configure CFLAGS='-g -O0' CXXFLAGS='-g -O0'  --prefix=/usr/local/openssh --sysconfdir=/etc/ssh  --with-ssl-dir=/usr/local/openssl --with-zlib-dir=/usr/local/zlib --without-openssl-header-check
-		/* Ä¬ÈÏÓÅ»¯ */
+		/* é»˜è®¤ä¼˜åŒ– */
 		./configure --prefix=/usr/local/openssh --sysconfdir=/etc/ssh  --with-ssl-dir=/usr/local/openssl --with-zlib-dir=/usr/local/zlib --without-openssl-header-check
 		make clean;make
 		make tests
 		
-		±àÒë´íÎó
+		ç¼–è¯‘é”™è¯¯
 			vim /etc/group
 				sshd::103:
 			vim /etc/passwd
 				sshd:*:192:103:sshd privsep:/var/empty:/bin/false
 
-	4. ÔËĞĞ
+	4. è¿è¡Œ
 		/home/xiaoke/openssh-portable/sshd -f /home/xiaoke/openssh-portable/sshd_config -E /tmp/xksshd.log
 		/home/xiaoke/openssh-portable/sshd -f /home/xiaoke/openssh-portable/sshd_config -D -ddd
 		
