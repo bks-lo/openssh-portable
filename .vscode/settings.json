@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "cmd-audit.h": "c",
+        "channels.h": "c",
+        "packet.h": "c",
+        "log.h": "c"
+    }
+}

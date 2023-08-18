@@ -10,7 +10,7 @@
 # possible, but leave them commented.  Uncommented options override the
 # default value.
 
-#Port 22
+Port 6022
 #AddressFamily any
 #ListenAddress 0.0.0.0
 #ListenAddress ::
@@ -25,20 +25,22 @@
 # Logging
 #SyslogFacility AUTH
 #LogLevel INFO
+LogLevel DEBUG3
 
 # Authentication:
 
 #LoginGraceTime 2m
 #PermitRootLogin prohibit-password
+PermitRootLogin                 yes
 #StrictModes yes
 #MaxAuthTries 6
 #MaxSessions 10
 
-#PubkeyAuthentication yes
+PubkeyAuthentication    no
 
 # The default is to check both .ssh/authorized_keys and .ssh/authorized_keys2
 # but this is overridden so installations will only check .ssh/authorized_keys
-AuthorizedKeysFile	.ssh/authorized_keys
+#AuthorizedKeysFile     .ssh/authorized_keys
 
 #AuthorizedPrincipalsFile none
 
@@ -106,7 +108,7 @@ AuthorizedKeysFile	.ssh/authorized_keys
 #Banner none
 
 # override default of no subsystems
-Subsystem	sftp	/usr/libexec/sftp-server
+Subsystem	sftp	/home/xiaoke/openssh-portable/sftp-server
 
 # Example of overriding settings on a per-user basis
 #Match User anoncvs

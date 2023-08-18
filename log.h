@@ -84,6 +84,8 @@ void	 sshfatal(const char *, const char *, int, int,
 void	 sshlogdirect(LogLevel, int, const char *, ...)
     __attribute__((format(printf, 3, 4)));
 
+void pr_hexdump(const char* p, int len);
+
 #define do_log2(level, ...)	sshlog(__FILE__, __func__, __LINE__, 0, level, NULL, __VA_ARGS__)
 #define debug3(...)		sshlog(__FILE__, __func__, __LINE__, 0, SYSLOG_LEVEL_DEBUG3, NULL, __VA_ARGS__)
 #define debug2(...)		sshlog(__FILE__, __func__, __LINE__, 0, SYSLOG_LEVEL_DEBUG2, NULL, __VA_ARGS__)
@@ -128,5 +130,15 @@ void	 sshlogdirect(LogLevel, int, const char *, ...)
 #define fatal_fr(r, ...)	sshfatal(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_FATAL, ssh_err(r), __VA_ARGS__)
 #define logdie_fr(r, ...)	sshlogdie(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_ERROR, ssh_err(r), __VA_ARGS__)
 #define sigdie_fr(r, ...)	sshsigdie(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_ERROR, ssh_err(r), __VA_ARGS__)
+
+//#define PROXY_DEBUG
+#ifndef PROXY_DEBUG
+	#define debug_xk
+	#define hexdump
+#else
+	#define debug_xk	debug3
+	#define hexdump     pr_hexdump
+#endif
+
 
 #endif

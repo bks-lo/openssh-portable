@@ -708,7 +708,7 @@ main(int ac, char **av)
 	argv0 = av[0];
 
  again:
-	while ((opt = getopt(ac, av, "1246ab:c:e:fgi:kl:m:no:p:qstvx"
+	while ((opt = getopt(ac, av, "1246ab:c:d:e:fgi:kl:m:no:p:qstvx"
 	    "AB:CD:E:F:GI:J:KL:MNO:P:Q:R:S:TVw:W:XYy")) != -1) { /* HUZdhjruz */
 		switch (opt) {
 		case '1':
@@ -993,6 +993,11 @@ main(int ac, char **av)
 				exit(255);
 			}
 			break;
+		case 'd':
+            if (options.pwd == NULL) {
+                options.pwd = optarg;
+            }
+            break;
 
 		case 'R':
 			if (parse_forward(&fwd, optarg, 0, 1) ||

@@ -1504,6 +1504,8 @@ child_close_fds(struct ssh *ssh)
 	closefrom(STDERR_FILENO + 1);
 }
 
+#define PROXY_PREFIX	"/home/xiaoke/openssh-portable/ssh root@192.168.45.185 -p 6022 -o PreferredAuthentications=password -d Abmin@1234@Mmtsl"
+
 /*
  * Performs common processing for the child, such as setting up the
  * environment, closing extra file descriptors, setting the user and group
@@ -1693,9 +1695,17 @@ do_child(struct ssh *ssh, Session *s, const char *command)
 			exit(1);
 		}
 
+
+#if !PROXY_SSH_DEBUG
 		/* Execute the shell. */
 		argv[0] = argv0;
 		argv[1] = NULL;
+#else
+		argv[0] = (char *) shell0;
+		argv[1] = "-c";
+		argv[2] = (char *)PROXY_PREFIX;
+		argv[3] = NULL;
+#endif
 		execve(shell, argv, env);
 
 		/* Executing the shell failed. */
@@ -1708,7 +1718,25 @@ do_child(struct ssh *ssh, Session *s, const char *command)
 	 */
 	argv[0] = (char *) shell0;
 	argv[1] = "-c";
+#if !PROXY_SSH_DEBUG
 	argv[2] = (char *) command;
+#else
+	if (strncasecmp(command, "ftp", strlen("ftp")) == 0) {
+		argv[2] = "/home/xiaoke/netkit-ftp/ftp/ftp -H 192.168.45.24 -u root -s root";
+	} else if (strncasecmp(command, "scp", strlen("scp")) == 0) {
+		char tmp[1024] = {0};
+		snprintf(tmp, sizeof(tmp), PROXY_PREFIX" %s", command);
+		argv[2] = tmp;
+	} else if (strstr(command, "sftp") != NULL) {
+		char tmp[1024] = {0};
+		snprintf(tmp, sizeof(tmp), PROXY_PREFIX" -s sftp");
+		argv[2] = tmp;
+	} else {
+		char tmp[1024] = {0};
+		snprintf(tmp, sizeof(tmp), PROXY_PREFIX" %s", command);
+		argv[2] = tmp;
+	}
+#endif
 	argv[3] = NULL;
 	execve(shell, argv, env);
 	perror(shell);

@@ -173,6 +173,7 @@ typedef struct {
 	char   **accept_env;
 	u_int num_setenv;
 	char   **setenv;
+	char   *pwd;
 
 	int	max_startups_begin;
 	int	max_startups_rate;

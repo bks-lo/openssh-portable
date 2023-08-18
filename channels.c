@@ -2090,13 +2090,24 @@ channel_handle_rfd(struct ssh *ssh, Channel *c)
 			    c->self, c->rfd, maxlen, ssh_err(r));
 			goto rfail;
 		}
-		if (nr != 0)
+		if (nr != 0) {
 			c->lastused = monotime();
+#ifdef PROXY_DEBUG
+			hexdump(sshbuf_ptr(c->input), nr);
+
+			char tmp[CHANNEL_MAX_READ] = {0};
+			memcpy(tmp, sshbuf_ptr(c->input), nr);
+			debug_xk("xiaoke read 1 [%d]: %s", nr, tmp);
+#endif
+		}
 		return 1;
 	}
 
 	errno = 0;
 	len = read(c->rfd, buf, sizeof(buf));
+	hexdump(buf, len);
+	debug_xk("xiaoke read 2 [%d]: %s", len, buf);
+
 	/* fixup AIX zero-length read with errno set to look more like errors */
 	if (pty_zeroread && len == 0 && errno != 0)
 		len = -1;
@@ -2164,6 +2175,15 @@ channel_handle_wfd(struct ssh *ssh, Channel *c)
 		buf = data = sshbuf_mutable_ptr(c->output);
 		dlen = sshbuf_len(c->output);
 	}
+
+#ifdef PROXY_DEBUG
+	hexdump(buf, dlen);
+	char tmp[CHANNEL_MAX_READ] = {0};
+	int nr = snprintf(tmp, CHANNEL_MAX_READ, "%s", buf);
+	nr = nr > (CHANNEL_MAX_READ - 1) ? (CHANNEL_MAX_READ - 1) : nr;
+	memcpy(tmp, buf, nr);
+	debug_xk("xiaoke write [%d]: %s", nr, tmp);
+#endif
 
 	if (c->datagram) {
 		/* ignore truncated writes, datagrams might get lost */
@@ -2236,6 +2256,15 @@ channel_handle_efd_write(struct ssh *ssh, Channel *c)
 
 	len = write(c->efd, sshbuf_ptr(c->extended),
 	    sshbuf_len(c->extended));
+
+#ifdef PROXY_DEBUG
+	hexdump(sshbuf_ptr(c->extended), sshbuf_len(c->extended));
+	char tmp[CHANNEL_MAX_READ] = {0};
+	int nr = snprintf(tmp, CHANNEL_MAX_READ, "%s", sshbuf_ptr(c->extended));
+	nr = nr > (CHANNEL_MAX_READ - 1) ? (CHANNEL_MAX_READ - 1) : nr;
+	debug_xk("xiaoke error write [%d]: %s", nr, tmp);
+#endif
+
 	debug2("channel %d: written %zd to efd %d", c->self, len, c->efd);
 	if (len == -1 && (errno == EINTR || errno == EAGAIN ||
 	    errno == EWOULDBLOCK))
@@ -2265,6 +2294,11 @@ channel_handle_efd_read(struct ssh *ssh, Channel *c)
 		return 1;
 
 	len = read(c->efd, buf, sizeof(buf));
+
+	buf[len] = 0;
+	hexdump(buf, len);
+	debug_xk("xiaoke error read [%d]: %s", len, buf);
+
 	debug2("channel %d: read %zd from efd %d", c->self, len, c->efd);
 	if (len == -1 && (errno == EINTR || ((errno == EAGAIN ||
 	    errno == EWOULDBLOCK) && !force)))

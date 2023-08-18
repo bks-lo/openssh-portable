@@ -498,3 +498,73 @@ sshlogdirect(LogLevel level, int forced, const char *fmt, ...)
 	do_log(level, forced, NULL, fmt, args);
 	va_end(args);
 }
+
+void prinf_orig(const char *fmt, ...)
+{
+	if (log_stderr_fd <= -1) {
+		return ;
+	}
+
+	char msgbuf[MSGBUFSIZ];
+	va_list args;
+
+	va_start(args, fmt);
+	vsnprintf(msgbuf, sizeof(msgbuf), fmt, args);
+	va_end(args);
+
+	(void)write(log_stderr_fd, msgbuf, strlen(msgbuf));
+}
+
+#define PKT_PRINT(fmt, ...)   prinf_orig(fmt, ##__VA_ARGS__)
+//hexdump打印
+void pr_hexdump(const char* p, int len)
+{
+	if (log_level < SYSLOG_LEVEL_DEBUG3)
+		return;
+
+    const char* line;
+    int i;
+    int thisline;
+    int offset;
+
+    line = p;
+    offset = 0;
+    PKT_PRINT("\n");
+    while (offset < len) {
+        PKT_PRINT("%04x ", offset);
+        thisline = len - offset;
+        if (thisline > 16) {
+            thisline = 16;
+        }
+
+		/* 打印前面的16进制数字 */
+        for (i = 0; i < thisline; i++) {
+            if (i == 8) {
+                PKT_PRINT(" ");
+            }
+
+            PKT_PRINT("%02x ", (unsigned char)line[i]);
+        }
+
+		/* 不够16字符  补充成空格 */
+        for (; i < 16; i++) {
+			if (i == 8) {
+                PKT_PRINT(" ");
+            }
+            PKT_PRINT("   ");
+        }
+
+		/* 打印16进制对应的字符 */
+        for (i = 0; i < thisline; i++) {
+            if (i == 8) {
+                PKT_PRINT(" ");
+            }
+
+            PKT_PRINT("%c", (line[i] >= 0x20 && line[i] < 0x7f) ? line[i] : '.');
+        }
+        PKT_PRINT("\n");
+        offset += thisline;
+        line += thisline;
+    }
+    PKT_PRINT("\n");
+}

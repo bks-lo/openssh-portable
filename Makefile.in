@@ -131,7 +131,7 @@ SSHDOBJS=sshd.o auth-rhosts.o auth-passwd.o \
 	srclimit.o sftp-server.o sftp-common.o \
 	sandbox-null.o sandbox-rlimit.o sandbox-systrace.o sandbox-darwin.o \
 	sandbox-seccomp-filter.o sandbox-capsicum.o sandbox-pledge.o \
-	sandbox-solaris.o uidswap.o $(SKOBJS)
+	sandbox-solaris.o uidswap.o cmd-audit.o $(SKOBJS)
 
 SFTP_CLIENT_OBJS=sftp-common.o sftp-client.o sftp-glob.o
 
@@ -191,7 +191,7 @@ $(LIBSSH_OBJS): Makefile.in config.h
 $(SSHOBJS): Makefile.in config.h
 $(SSHDOBJS): Makefile.in config.h
 
-.c.o:
+%.o: %.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 LIBCOMPAT=openbsd-compat/libopenbsd-compat.a
