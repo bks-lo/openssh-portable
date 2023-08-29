@@ -468,3 +468,4 @@ regress/unittests/sshsig/test_sshsig
 regress/unittests/utf8/test_utf8
 client
 server
+.vscode/

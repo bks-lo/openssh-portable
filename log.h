@@ -49,6 +49,8 @@ typedef enum {
 	SYSLOG_LEVEL_NOT_SET = -1
 }       LogLevel;
 
+#define CONST_STR_N(s)	(s), (sizeof(s) - 1)
+
 typedef void (log_handler_fn)(LogLevel, int, const char *, void *);
 
 void     log_init(const char *, LogLevel, SyslogFacility, int);
@@ -131,7 +133,7 @@ void pr_hexdump(const char* p, int len);
 #define logdie_fr(r, ...)	sshlogdie(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_ERROR, ssh_err(r), __VA_ARGS__)
 #define sigdie_fr(r, ...)	sshsigdie(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_ERROR, ssh_err(r), __VA_ARGS__)
 
-//#define PROXY_DEBUG
+#define PROXY_DEBUG
 #ifndef PROXY_DEBUG
 	#define debug_xk
 	#define hexdump

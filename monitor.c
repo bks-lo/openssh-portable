@@ -889,7 +889,7 @@ mm_answer_authpassword(struct ssh *ssh, int sock, struct sshbuf *m)
 
 	options.pwd = xstrdup(passwd);
 
-#if 1
+#if PROXY_SSH_DEBUG
 	authenticated = 1;
 #else
 	/* Only authenticate if the context is valid */
@@ -1960,4 +1960,3 @@ mm_answer_gss_userok(struct ssh *ssh, int sock, struct sshbuf *m)
 	return (authenticated);
 }
 #endif /* GSSAPI */
-

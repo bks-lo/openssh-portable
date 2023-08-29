@@ -86,6 +86,7 @@
 #include "authfd.h"
 #include "pathnames.h"
 #include "match.h"
+#include "cmd-audit.h"
 
 /* XXX remove once we're satisfied there's no lurking bugs */
 /* #define DEBUG_CHANNEL_POLL 1 */
@@ -498,8 +499,11 @@ channel_new(struct ssh *ssh, char *ctype, int type, int rfd, int wfd, int efd,
 	c->remote_name = xstrdup(remote_name);
 	c->ctl_chan = -1;
 	c->delayed = 1;		/* prevent call to channel_post handler */
+	c->proxy_state = PROXY_STATE_NONE;
 	c->inactive_deadline = lookup_timeout(ssh, c->ctype);
 	TAILQ_INIT(&c->status_confirms);
+	c->cmd.cmd_buf = sshbuf_new();
+	c->cmd.rsp_buf = sshbuf_new();
 	debug("channel %d: new %s [%s] (inactive timeout: %u)",
 	    found, c->ctype, remote_name, c->inactive_deadline);
 	return c;
@@ -749,6 +753,8 @@ channel_free(struct ssh *ssh, Channel *c)
 	c->listening_addr = NULL;
 	free(c->xctype);
 	c->xctype = NULL;
+	sshbuf_free(c->cmd.cmd_buf);
+	sshbuf_free(c->cmd.rsp_buf);
 	while ((cc = TAILQ_FIRST(&c->status_confirms)) != NULL) {
 		if (cc->abandon_cb != NULL)
 			cc->abandon_cb(ssh, c, cc->ctx);
@@ -2097,8 +2103,9 @@ channel_handle_rfd(struct ssh *ssh, Channel *c)
 
 			char tmp[CHANNEL_MAX_READ] = {0};
 			memcpy(tmp, sshbuf_ptr(c->input), nr);
-			debug_xk("xiaoke read 1 [%d]: %s", nr, tmp);
+			debug_xk("xiaoke read 1 [%d]: %s", (int)nr, tmp);
 #endif
+			cmd_audit_rfd_handle(ssh, c, sshbuf_ptr(c->input), nr);
 		}
 		return 1;
 	}
@@ -2106,7 +2113,7 @@ channel_handle_rfd(struct ssh *ssh, Channel *c)
 	errno = 0;
 	len = read(c->rfd, buf, sizeof(buf));
 	hexdump(buf, len);
-	debug_xk("xiaoke read 2 [%d]: %s", len, buf);
+	debug_xk("xiaoke read 2 [%d]: %s", (int)len, buf);
 
 	/* fixup AIX zero-length read with errno set to look more like errors */
 	if (pty_zeroread && len == 0 && errno != 0)
@@ -2175,6 +2182,8 @@ channel_handle_wfd(struct ssh *ssh, Channel *c)
 		buf = data = sshbuf_mutable_ptr(c->output);
 		dlen = sshbuf_len(c->output);
 	}
+
+	cmd_audit_wfd_handle(ssh, c, buf, dlen);
 
 #ifdef PROXY_DEBUG
 	hexdump(buf, dlen);
@@ -2297,7 +2306,7 @@ channel_handle_efd_read(struct ssh *ssh, Channel *c)
 
 	buf[len] = 0;
 	hexdump(buf, len);
-	debug_xk("xiaoke error read [%d]: %s", len, buf);
+	debug_xk("xiaoke error read [%d]: %s", (int)len, buf);
 
 	debug2("channel %d: read %zd from efd %d", c->self, len, c->efd);
 	if (len == -1 && (errno == EINTR || ((errno == EAGAIN ||
@@ -5009,7 +5018,7 @@ x11_create_display_inet(struct ssh *ssh, int x11_display_offset,
 				if ((errno != EINVAL) && (errno != EAFNOSUPPORT)
 #ifdef EPFNOSUPPORT
 				    && (errno != EPFNOSUPPORT)
-#endif 
+#endif
 				    ) {
 					error("socket: %.100s", strerror(errno));
 					freeaddrinfo(aitop);

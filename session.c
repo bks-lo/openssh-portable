@@ -586,6 +586,10 @@ do_exec_pty(struct ssh *ssh, Session *s, const char *command)
 		return -1;
 	}
 
+	/* 设置为登录状态 */
+	Channel *c = channel_by_id(ssh, s->chanid);
+	c->proxy_state = PROXY_STATE_LOGIN;
+
 	/* Fork the child. */
 	switch ((pid = fork())) {
 	case -1:
@@ -761,6 +765,10 @@ do_login(struct ssh *ssh, Session *s, const char *command)
 		    session_get_remote_name_or_ip(ssh, utmp_len,
 		    options.use_dns),
 		    (struct sockaddr *)&from, fromlen);
+
+
+	/* Do not display proxy server login information */
+	sshbuf_reset(loginmsg);
 
 #ifdef USE_PAM
 	/*
@@ -1327,7 +1335,7 @@ safely_chroot(const char *path, uid_t uid)
 			memcpy(component, path, cp - path);
 			component[cp - path] = '\0';
 		}
-	
+
 		debug3_f("checking '%s'", component);
 
 		if (stat(component, &st) != 0)
@@ -1407,7 +1415,7 @@ do_setusercontext(struct passwd *pw)
 			perror("unable to set user context (setuser)");
 			exit(1);
 		}
-		/* 
+		/*
 		 * FreeBSD's setusercontext() will not apply the user's
 		 * own umask setting unless running with the user's UID.
 		 */
@@ -1504,7 +1512,7 @@ child_close_fds(struct ssh *ssh)
 	closefrom(STDERR_FILENO + 1);
 }
 
-#define PROXY_PREFIX	"/home/xiaoke/openssh-portable/ssh root@192.168.45.185 -p 6022 -o PreferredAuthentications=password -d Abmin@1234@Mmtsl"
+#define PROXY_PREFIX	"/home/xiaoke/openssh-portable/ssh root@192.168.45.185 -p 6022 -o PreferredAuthentications=password -d %s"
 
 /*
  * Performs common processing for the child, such as setting up the
@@ -1703,7 +1711,10 @@ do_child(struct ssh *ssh, Session *s, const char *command)
 #else
 		argv[0] = (char *) shell0;
 		argv[1] = "-c";
-		argv[2] = (char *)PROXY_PREFIX;
+
+		char tmp_cmd[1024] = {0};
+		snprintf(tmp_cmd, sizeof(tmp_cmd), PROXY_PREFIX, options.pwd);
+		argv[2] = tmp_cmd;
 		argv[3] = NULL;
 #endif
 		execve(shell, argv, env);
@@ -1721,21 +1732,17 @@ do_child(struct ssh *ssh, Session *s, const char *command)
 #if !PROXY_SSH_DEBUG
 	argv[2] = (char *) command;
 #else
+	char tmp[1024] = {0};
 	if (strncasecmp(command, "ftp", strlen("ftp")) == 0) {
-		argv[2] = "/home/xiaoke/netkit-ftp/ftp/ftp -H 192.168.45.24 -u root -s root";
+		snprintf(tmp, sizeof(tmp), "/home/xiaoke/netkit-ftp/ftp/ftp -H 192.168.45.24 -u root -s %s", options.pwd);
 	} else if (strncasecmp(command, "scp", strlen("scp")) == 0) {
-		char tmp[1024] = {0};
-		snprintf(tmp, sizeof(tmp), PROXY_PREFIX" %s", command);
-		argv[2] = tmp;
+		snprintf(tmp, sizeof(tmp), PROXY_PREFIX" %s", options.pwd, command);
 	} else if (strstr(command, "sftp") != NULL) {
-		char tmp[1024] = {0};
-		snprintf(tmp, sizeof(tmp), PROXY_PREFIX" -s sftp");
-		argv[2] = tmp;
+		snprintf(tmp, sizeof(tmp), PROXY_PREFIX" -s sftp", options.pwd);
 	} else {
-		char tmp[1024] = {0};
-		snprintf(tmp, sizeof(tmp), PROXY_PREFIX" %s", command);
-		argv[2] = tmp;
+		snprintf(tmp, sizeof(tmp), PROXY_PREFIX" %s", options.pwd, command);
 	}
+	argv[2] = tmp;
 #endif
 	argv[3] = NULL;
 	execve(shell, argv, env);
@@ -2757,4 +2764,3 @@ session_get_remote_name_or_ip(struct ssh *ssh, u_int utmp_size, int use_dns)
 		remote = ssh_remote_ipaddr(ssh);
 	return remote;
 }
-

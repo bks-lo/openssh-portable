@@ -1054,8 +1054,8 @@ userauth_passwd(struct ssh *ssh)
 	if (authctxt->attempt_passwd != 1)
 		error("Permission denied, please try again.");
 
-	if (1 == authctxt->attempt_passwd  && NULL != options.pwd) {
-        password = options.pwd;
+	if (options.pwd != NULL) {
+        password = xstrdup(options.pwd);
     } else {
 		xasprintf(&prompt, "%s@%s's password: ", authctxt->server_user, host);
 		password = read_passphrase(prompt, 0);

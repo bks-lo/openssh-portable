@@ -38,6 +38,8 @@
 #ifndef CHANNEL_H
 #define CHANNEL_H
 
+#include "cmd-define.h"
+
 /* Definitions for channel types. */
 #define SSH_CHANNEL_X11_LISTENER	1	/* Listening for inet X11 conn. */
 #define SSH_CHANNEL_PORT_LISTENER	2	/* Listening on a port. */
@@ -211,6 +213,14 @@ struct Channel {
 	time_t			lastused;
 	/* Inactivity timeout deadline in seconds (0 = no timeout) */
 	int			inactive_deadline;
+
+	/* 代理状态，未登录，登录成功，失败等 */
+	proxy_state_t proxy_state;
+
+	/* 记录远程服务器的prompt */
+	char prompt[1024];
+
+	cmd_t cmd;
 };
 
 #define CHAN_EXTENDED_IGNORE		0

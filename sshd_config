@@ -10,7 +10,7 @@
 # possible, but leave them commented.  Uncommented options override the
 # default value.
 
-Port 6022
+Port 5022
 #AddressFamily any
 #ListenAddress 0.0.0.0
 #ListenAddress ::
@@ -108,7 +108,7 @@ PubkeyAuthentication    no
 #Banner none
 
 # override default of no subsystems
-Subsystem	sftp	/home/xiaoke/openssh-portable/sftp-server
+Subsystem	sftp	/home/xiaoke/openssh-9.3p2/sftp-server
 
 # Example of overriding settings on a per-user basis
 #Match User anoncvs

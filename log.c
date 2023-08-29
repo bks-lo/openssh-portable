@@ -386,7 +386,7 @@ do_log(LogLevel level, int force, const char *suffix, const char *fmt,
 		break;
 	}
 	if (txt != NULL && log_handler == NULL) {
-		snprintf(fmtbuf, sizeof(fmtbuf), "%s: %s", txt, fmt);
+		snprintf(fmtbuf, sizeof(fmtbuf), "%s(pid=%ld): %s", txt, (long)getpid(), fmt);
 		vsnprintf(msgbuf, sizeof(msgbuf), fmtbuf, args);
 	} else {
 		vsnprintf(msgbuf, sizeof(msgbuf), fmt, args);
@@ -516,7 +516,7 @@ void prinf_orig(const char *fmt, ...)
 }
 
 #define PKT_PRINT(fmt, ...)   prinf_orig(fmt, ##__VA_ARGS__)
-//hexdump´òÓ¡
+//hexdumpï¿½ï¿½Ó¡
 void pr_hexdump(const char* p, int len)
 {
 	if (log_level < SYSLOG_LEVEL_DEBUG3)
@@ -537,7 +537,7 @@ void pr_hexdump(const char* p, int len)
             thisline = 16;
         }
 
-		/* ´òÓ¡Ç°ÃæµÄ16½øÖÆÊý×Ö */
+		/* ï¿½ï¿½Ó¡Ç°ï¿½ï¿½ï¿½16ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ */
         for (i = 0; i < thisline; i++) {
             if (i == 8) {
                 PKT_PRINT(" ");
@@ -546,7 +546,7 @@ void pr_hexdump(const char* p, int len)
             PKT_PRINT("%02x ", (unsigned char)line[i]);
         }
 
-		/* ²»¹»16×Ö·û  ²¹³ä³É¿Õ¸ñ */
+		/* ï¿½ï¿½ï¿½ï¿½16ï¿½Ö·ï¿½  ï¿½ï¿½ï¿½ï¿½É¿Õ¸ï¿½ */
         for (; i < 16; i++) {
 			if (i == 8) {
                 PKT_PRINT(" ");
@@ -554,7 +554,7 @@ void pr_hexdump(const char* p, int len)
             PKT_PRINT("   ");
         }
 
-		/* ´òÓ¡16½øÖÆ¶ÔÓ¦µÄ×Ö·û */
+		/* ï¿½ï¿½Ó¡16ï¿½ï¿½ï¿½Æ¶ï¿½Ó¦ï¿½ï¿½ï¿½Ö·ï¿½ */
         for (i = 0; i < thisline; i++) {
             if (i == 8) {
                 PKT_PRINT(" ");
