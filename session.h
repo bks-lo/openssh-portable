@@ -26,8 +26,6 @@
 #ifndef SESSION_H
 #define SESSION_H
 
-#define PROXY_SSH_DEBUG 1
-
 #define TTYSZ 64
 typedef struct Session Session;
 struct Session {

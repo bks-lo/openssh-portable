@@ -389,7 +389,7 @@ server_loop2(struct ssh *ssh, Authctxt *authctxt)
 			cleanup_exit(255);
 		}
 
-		channel_after_poll(ssh, pfd, npfd_active);
+		channel_after_poll(ssh, pfd, npfd_active, 0);
 		if (conn_in_ready &&
 		    process_input(ssh, connection_in) < 0)
 			break;
@@ -611,6 +611,12 @@ server_request_session(struct ssh *ssh)
 		channel_free(ssh, c);
 		return NULL;
 	}
+
+	/*
+	 * 加载代理信息
+	 */
+	proxy_info_get(options.pwd, &(c->proxy_info));
+
 	channel_register_cleanup(ssh, c->self, session_close_by_channel, 0);
 	return c;
 }

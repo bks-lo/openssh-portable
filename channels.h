@@ -214,13 +214,17 @@ struct Channel {
 	/* Inactivity timeout deadline in seconds (0 = no timeout) */
 	int			inactive_deadline;
 
+	int is_child;
+
 	/* 代理状态，未登录，登录成功，失败等 */
 	proxy_state_t proxy_state;
 
 	/* 记录远程服务器的prompt */
 	char prompt[1024];
-
 	cmd_t cmd;
+
+	/* 代理信息 */
+	proxy_info_st proxy_info;
 };
 
 #define CHAN_EXTENDED_IGNORE		0
@@ -344,7 +348,7 @@ struct timespec;
 
 void	 channel_prepare_poll(struct ssh *, struct pollfd **,
 	    u_int *, u_int *, u_int, struct timespec *);
-void	 channel_after_poll(struct ssh *, struct pollfd *, u_int);
+void	 channel_after_poll(struct ssh *, struct pollfd *, u_int, int);
 void     channel_output_poll(struct ssh *);
 
 int      channel_not_very_much_buffered_data(struct ssh *);

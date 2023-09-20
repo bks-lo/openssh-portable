@@ -516,7 +516,7 @@ void prinf_orig(const char *fmt, ...)
 }
 
 #define PKT_PRINT(fmt, ...)   prinf_orig(fmt, ##__VA_ARGS__)
-//hexdump��ӡ
+//hexdump
 void pr_hexdump(const char* p, int len)
 {
 	if (log_level < SYSLOG_LEVEL_DEBUG3)
@@ -537,7 +537,6 @@ void pr_hexdump(const char* p, int len)
             thisline = 16;
         }
 
-		/* ��ӡǰ���16�������� */
         for (i = 0; i < thisline; i++) {
             if (i == 8) {
                 PKT_PRINT(" ");
@@ -546,7 +545,6 @@ void pr_hexdump(const char* p, int len)
             PKT_PRINT("%02x ", (unsigned char)line[i]);
         }
 
-		/* ����16�ַ�  ����ɿո� */
         for (; i < 16; i++) {
 			if (i == 8) {
                 PKT_PRINT(" ");
@@ -554,7 +552,6 @@ void pr_hexdump(const char* p, int len)
             PKT_PRINT("   ");
         }
 
-		/* ��ӡ16���ƶ�Ӧ���ַ� */
         for (i = 0; i < thisline; i++) {
             if (i == 8) {
                 PKT_PRINT(" ");
@@ -567,4 +564,23 @@ void pr_hexdump(const char* p, int len)
         line += thisline;
     }
     PKT_PRINT("\n");
+}
+
+void pr_rqst_hexdump(const char *p, int len)
+{
+	PKT_PRINT("requst pkt ====>");
+	pr_hexdump(p, len);
+}
+
+
+void pr_rspd_hexdump(const char *p, int len)
+{
+	PKT_PRINT("respond pkt ====>");
+	pr_hexdump(p, len);
+}
+
+void pr_suffix_hexdump(const char *suffix, const char *p, int len)
+{
+	PKT_PRINT("%s", suffix);
+	pr_hexdump(p, len);
 }

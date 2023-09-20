@@ -86,7 +86,10 @@ void	 sshfatal(const char *, const char *, int, int,
 void	 sshlogdirect(LogLevel, int, const char *, ...)
     __attribute__((format(printf, 3, 4)));
 
+void prinf_orig(const char *fmt, ...);
 void pr_hexdump(const char* p, int len);
+void pr_rqst_hexdump(const char *p, int len);
+void pr_rspd_hexdump(const char *p, int len);
 
 #define do_log2(level, ...)	sshlog(__FILE__, __func__, __LINE__, 0, level, NULL, __VA_ARGS__)
 #define debug3(...)		sshlog(__FILE__, __func__, __LINE__, 0, SYSLOG_LEVEL_DEBUG3, NULL, __VA_ARGS__)
@@ -133,13 +136,16 @@ void pr_hexdump(const char* p, int len);
 #define logdie_fr(r, ...)	sshlogdie(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_ERROR, ssh_err(r), __VA_ARGS__)
 #define sigdie_fr(r, ...)	sshsigdie(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_ERROR, ssh_err(r), __VA_ARGS__)
 
-#define PROXY_DEBUG
 #ifndef PROXY_DEBUG
-	#define debug_xk
+	#define debug_orig
 	#define hexdump
+	#define rspd_hexdump
+	#define rqst_hexdump
 #else
-	#define debug_xk	debug3
+	#define debug_orig	prinf_orig
 	#define hexdump     pr_hexdump
+	#define rspd_hexdump pr_rspd_hexdump
+	#define rqst_hexdump pr_rqst_hexdump
 #endif
 
 

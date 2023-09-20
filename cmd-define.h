@@ -21,6 +21,17 @@ typedef enum login_state_t
     LOGIN_STATE_MAX
 } login_state_t;
 
+typedef enum protolcol_type_t
+{
+    PT_NONE,
+    PT_SSH,
+    PT_SFTP,
+    PT_SCP,
+    PT_TELNET,
+    PT_RLOGIN,
+    PT_FTP
+} protolcol_type_t;
+
 typedef enum read_state_t
 {
     READ_STATE_NONE = 0,
@@ -94,5 +105,26 @@ typedef struct cmd_t
     struct sshbuf      *orig_bug;           /**< 原始数据 */
 } cmd_t;
 
+
+typedef struct proxy_info_st
+{
+    char sid[128];
+    char uid[128];
+
+    char protocol_type[32];			//真实协议类型
+    protolcol_type_t pt;            //真实协议类型
+
+    char hostname[256];				//服务器ip 地址
+    char username[256];				//服务器username
+    char password[256];				//服务器username
+    int port;   				    //服务器port
+
+    char cli_pname[64];             //客户端程序名
+    char client_ip[256];			//客户端ip
+} proxy_info_st;
+
+int proxy_info_get(char *sid, proxy_info_st *pinfo);
+
+int proxy_cmd_get(char *cmd, int clen, proxy_info_st *pinfo, const char *command);
 
 #endif

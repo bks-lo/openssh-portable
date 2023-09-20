@@ -434,6 +434,10 @@ do_exec_no_pty(struct ssh *ssh, Session *s, const char *command)
 
 	session_proctitle(s);
 
+	/* 设置为登录状态 */
+	Channel *c = channel_by_id(ssh, s->chanid);
+	c->proxy_state = PROXY_STATE_LOGIN;
+
 	/* Fork the child. */
 	switch ((pid = fork())) {
 	case -1:
@@ -1512,8 +1516,6 @@ child_close_fds(struct ssh *ssh)
 	closefrom(STDERR_FILENO + 1);
 }
 
-#define PROXY_PREFIX	"/home/xiaoke/openssh-portable/ssh root@192.168.45.185 -p 6022 -o PreferredAuthentications=password -d %s"
-
 /*
  * Performs common processing for the child, such as setting up the
  * environment, closing extra file descriptors, setting the user and group
@@ -1528,6 +1530,8 @@ do_child(struct ssh *ssh, Session *s, const char *command)
 	const char *shell, *shell0;
 	struct passwd *pw = s->pw;
 	int r = 0;
+
+	Channel *c = channel_by_id(ssh, s->chanid);
 
 	sshpkt_fmt_connection_id(ssh, remote_id, sizeof(remote_id));
 
@@ -1704,7 +1708,7 @@ do_child(struct ssh *ssh, Session *s, const char *command)
 		}
 
 
-#if !PROXY_SSH_DEBUG
+#if !PROXY_ENABLE
 		/* Execute the shell. */
 		argv[0] = argv0;
 		argv[1] = NULL;
@@ -1713,7 +1717,7 @@ do_child(struct ssh *ssh, Session *s, const char *command)
 		argv[1] = "-c";
 
 		char tmp_cmd[1024] = {0};
-		snprintf(tmp_cmd, sizeof(tmp_cmd), PROXY_PREFIX, options.pwd);
+		proxy_cmd_get(tmp_cmd, sizeof(tmp_cmd), &(c->proxy_info), NULL);
 		argv[2] = tmp_cmd;
 		argv[3] = NULL;
 #endif
@@ -1729,19 +1733,11 @@ do_child(struct ssh *ssh, Session *s, const char *command)
 	 */
 	argv[0] = (char *) shell0;
 	argv[1] = "-c";
-#if !PROXY_SSH_DEBUG
+#if !PROXY_ENABLE
 	argv[2] = (char *) command;
 #else
 	char tmp[1024] = {0};
-	if (strncasecmp(command, "ftp", strlen("ftp")) == 0) {
-		snprintf(tmp, sizeof(tmp), "/home/xiaoke/netkit-ftp/ftp/ftp -H 192.168.45.24 -u root -s %s", options.pwd);
-	} else if (strncasecmp(command, "scp", strlen("scp")) == 0) {
-		snprintf(tmp, sizeof(tmp), PROXY_PREFIX" %s", options.pwd, command);
-	} else if (strstr(command, "sftp") != NULL) {
-		snprintf(tmp, sizeof(tmp), PROXY_PREFIX" -s sftp", options.pwd);
-	} else {
-		snprintf(tmp, sizeof(tmp), PROXY_PREFIX" %s", options.pwd, command);
-	}
+	proxy_cmd_get(tmp, sizeof(tmp), &(c->proxy_info), command);
 	argv[2] = tmp;
 #endif
 	argv[3] = NULL;

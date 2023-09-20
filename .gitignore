@@ -6,7 +6,6 @@ config.h.in~
 config.log
 config.status
 configure
-aclocal.m4
 openbsd-compat/Makefile
 openbsd-compat/regress/Makefile
 openssh.xml

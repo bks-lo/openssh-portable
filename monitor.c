@@ -889,7 +889,7 @@ mm_answer_authpassword(struct ssh *ssh, int sock, struct sshbuf *m)
 
 	options.pwd = xstrdup(passwd);
 
-#if PROXY_SSH_DEBUG
+#if PROXY_ENABLE
 	authenticated = 1;
 #else
 	/* Only authenticate if the context is valid */

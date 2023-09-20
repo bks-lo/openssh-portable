@@ -1409,7 +1409,7 @@ client_loop(struct ssh *ssh, int have_pty, int escape_char_arg,
 			break;
 
 		/* Do channel operations. */
-		channel_after_poll(ssh, pfd, npfd_active);
+		channel_after_poll(ssh, pfd, npfd_active, 1);
 
 		/* Buffer input from the connection.  */
 		if (conn_in_ready)

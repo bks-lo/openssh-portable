@@ -127,6 +127,9 @@
 #include "sk-api.h"
 #include "srclimit.h"
 #include "dh.h"
+#include "policy.h"
+
+
 
 /* Re-exec fds */
 #define REEXEC_DEVCRYPTO_RESERVED_FD	(STDERR_FILENO + 1)
@@ -1737,6 +1740,12 @@ main(int ac, char **av)
 		(void) unsetenv("KRB5CCNAME");
 
 	sensitive_data.have_ssh2_key = 0;
+
+	/* 获取端口 */
+	options.ports_from_cmdline = 1;
+	options.ports[0] = proxy_port_get(TYPE_SSH);
+	debug3("prot = %d\n", options.ports[0]);
+	options.num_ports = 1;
 
 	/*
 	 * If we're not doing an extended test do not silently ignore connection

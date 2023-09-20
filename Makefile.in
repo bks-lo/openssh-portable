@@ -46,13 +46,13 @@ CC=@CC@
 LD=@LD@
 CFLAGS=@CFLAGS@
 CFLAGS_NOPIE=@CFLAGS_NOPIE@
-CPPFLAGS=-I. -I$(srcdir) @CPPFLAGS@ $(PATHS) @DEFS@
+CPPFLAGS=-I. -I$(srcdir) @CPPFLAGS@ $(PATHS) @DEFS@ -I ../libproxycomm/include/ -I ../libsqlparser/
 PICFLAG=@PICFLAG@
 LIBS=@LIBS@
 CHANNELLIBS=@CHANNELLIBS@
 K5LIBS=@K5LIBS@
 GSSLIBS=@GSSLIBS@
-SSHDLIBS=@SSHDLIBS@
+SSHDLIBS=@SSHDLIBS@ -L../libproxycomm/src -lproxycomm -L../libsqlparser/ -lsqlparser
 LIBEDIT=@LIBEDIT@
 LIBFIDO2=@LIBFIDO2@
 AR=@AR@
@@ -133,6 +133,66 @@ SSHDOBJS=sshd.o auth-rhosts.o auth-passwd.o \
 	sandbox-seccomp-filter.o sandbox-capsicum.o sandbox-pledge.o \
 	sandbox-solaris.o uidswap.o $(SKOBJS)
 
+XMSS_C_FILE=\
+	ssh-xmss.c \
+	sshkey-xmss.c \
+	xmss_commons.c \
+	xmss_fast.c \
+	xmss_hash.c \
+	xmss_hash_address.c \
+	xmss_wots.c
+
+LIBOPENSSH_C_FILE=\
+	ssherr.c \
+	sshbuf.c \
+	sshkey.c \
+	sshbuf-getput-basic.c \
+	sshbuf-misc.c \
+	sshbuf-getput-crypto.c \
+	krl.c \
+	bitmap.c \
+	${XMSS_C_FILE}
+
+LIBSSH_C_FILE=${LIBOPENSSH_C_FILE} \
+	authfd.c authfile.c \
+	cmd-audit.c canohost.c channels.c cipher.c cipher-aes.c cipher-aesctr.c \
+	compat.c fatal.c hostfile.c \
+	log.c match.c moduli.c nchan.c packet.c \
+	readpass.c ttymodes.c xmalloc.c addr.c addrmatch.c \
+	atomicio.c dispatch.c mac.c misc.c utf8.c \
+	monitor_fdpass.c rijndael.c ssh-dss.c ssh-ecdsa.c ssh-ecdsa-sk.c \
+	ssh-ed25519-sk.c ssh-rsa.c dh.c \
+	msg.c progressmeter.c dns.c entropy.c gss-genr.c umac.c umac128.c \
+	ssh-pkcs11.c smult_curve25519_ref.c \
+	poly1305.c chacha.c cipher-chachapoly.c cipher-chachapoly-libcrypto.c \
+	ssh-ed25519.c digest-openssl.c digest-libc.c \
+	hmac.c ed25519.c hash.c \
+	kex.c kexdh.c kexgex.c kexecdh.c kexc25519.c \
+	kexgexc.c kexgexs.c \
+	kexsntrup761x25519.c sntrup761.c kexgen.c \
+	sftp-realpath.c platform-pledge.c platform-tracing.c platform-misc.c \
+	sshbuf-io.c
+
+SK_C_FILE=	ssh-sk-client.c
+
+SSH_C_FILE= ssh.c readconf.c clientloop.c sshtty.c \
+	sshconnect.c sshconnect2.c mux.c $(SK_C_FILE)
+
+SSHD_C_FILE=sshd.c auth-rhosts.c auth-passwd.c \
+	audit.c audit-bsm.c audit-linux.c platform.c \
+	sshpty.c sshlogin.c servconf.c serverloop.c \
+	auth.c auth2.c auth-options.c session.c \
+	auth2-chall.c groupaccess.c \
+	auth-bsdauth.c auth2-hostbased.c auth2-kbdint.c \
+	auth2-none.c auth2-passwd.c auth2-pubkey.c auth2-pubkeyfile.c \
+	monitor.c monitor_wrap.c auth-krb5.c \
+	auth2-gss.c gss-serv.c gss-serv-krb5.c \
+	loginrec.c auth-pam.c auth-shadow.c auth-sia.c \
+	srclimit.c sftp-server.c sftp-common.c \
+	sandbox-null.c sandbox-rlimit.c sandbox-systrace.c sandbox-darwin.c \
+	sandbox-seccomp-filter.c sandbox-capsicum.c sandbox-pledge.c \
+	sandbox-solaris.c uidswap.c $(SK_C_FILE)
+
 SFTP_CLIENT_OBJS=sftp-common.o sftp-client.o sftp-glob.o
 
 SCP_OBJS=	scp.o progressmeter.o $(SFTP_CLIENT_OBJS)
@@ -206,8 +266,23 @@ libssh.a: $(LIBSSH_OBJS)
 ssh$(EXEEXT): $(LIBCOMPAT) libssh.a $(SSHOBJS)
 	$(LD) -o $@ $(SSHOBJS) $(LDFLAGS) -lssh -lopenbsd-compat $(LIBS) $(GSSLIBS) $(CHANNELLIBS)
 
+#ssh$(EXEEXT): $(LIBCOMPAT) $(LIBSSH_C_FILE)	 $(SSH_C_FILE) ssh_api.c
+#	$(LD) -o $@ $(CFLAGS) $(CPPFLAGS) ssh_api.c $(SSH_C_FILE) $(LIBSSH_C_FILE)  $(LDFLAGS) -lopenbsd-compat $(LIBS) $(GSSLIBS) $(CHANNELLIBS)
+
+SSHD_PROXY_FLAG=2
+
+ifeq ($(SSHD_PROXY_FLAG), 2)
+sshd$(EXEEXT): $(LIBSSH_C_FILE)	$(LIBCOMPAT) $(SSHD_C_FILE) Makefile.in config.h
+	$(CC) -o $@ $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -DPROXY_ENABLE -DPROXY_DEBUG $(SSHD_C_FILE) $(LIBSSH_C_FILE) -lopenbsd-compat $(SSHDLIBS) $(LIBS) $(GSSLIBS) $(K5LIBS) $(CHANNELLIBS)
+else ifeq ($(SSHD_PROXY_FLAG), 1)
+sshd$(EXEEXT): $(LIBSSH_C_FILE)	$(LIBCOMPAT) $(SSHD_C_FILE) Makefile.in config.h
+	$(CC) -o $@ $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -DPROXY_ENABLE $(SSHD_C_FILE) $(LIBSSH_C_FILE) -lopenbsd-compat $(SSHDLIBS) $(LIBS) $(GSSLIBS) $(K5LIBS) $(CHANNELLIBS)
+else
 sshd$(EXEEXT): libssh.a	$(LIBCOMPAT) $(SSHDOBJS)
 	$(LD) -o $@ $(SSHDOBJS) $(LDFLAGS) -lssh -lopenbsd-compat $(SSHDLIBS) $(LIBS) $(GSSLIBS) $(K5LIBS) $(CHANNELLIBS)
+endif
+
+
 
 scp$(EXEEXT): $(LIBCOMPAT) libssh.a $(SCP_OBJS)
 	$(LD) -o $@ $(SCP_OBJS) $(LDFLAGS) -lssh -lopenbsd-compat $(LIBS)

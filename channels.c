@@ -499,6 +499,7 @@ channel_new(struct ssh *ssh, char *ctype, int type, int rfd, int wfd, int efd,
 	c->remote_name = xstrdup(remote_name);
 	c->ctl_chan = -1;
 	c->delayed = 1;		/* prevent call to channel_post handler */
+	c->is_child = 0;
 	c->proxy_state = PROXY_STATE_NONE;
 	c->inactive_deadline = lookup_timeout(ssh, c->ctype);
 	TAILQ_INIT(&c->status_confirms);
@@ -2098,23 +2099,31 @@ channel_handle_rfd(struct ssh *ssh, Channel *c)
 		}
 		if (nr != 0) {
 			c->lastused = monotime();
+#ifdef PROXY_ENABLE
 #ifdef PROXY_DEBUG
-			hexdump(sshbuf_ptr(c->input), nr);
-
+			rspd_hexdump(sshbuf_ptr(c->input), nr);
 			char tmp[CHANNEL_MAX_READ] = {0};
 			memcpy(tmp, sshbuf_ptr(c->input), nr);
-			debug_xk("xiaoke read 1 [%d]: %s", (int)nr, tmp);
+			debug_orig("proxy_debug read 1 [%d]: %s", (int)nr, tmp);
 #endif
 			cmd_audit_rfd_handle(ssh, c, sshbuf_ptr(c->input), nr);
+#endif
+
 		}
 		return 1;
 	}
 
-	errno = 0;
 	len = read(c->rfd, buf, sizeof(buf));
-	hexdump(buf, len);
-	debug_xk("xiaoke read 2 [%d]: %s", (int)len, buf);
 
+#ifdef PROXY_ENABLE
+#ifdef PROXY_DEBUG
+		rspd_hexdump(buf, len);
+		debug_orig("proxy_debug read 2 [%d]: %s", (int)len, buf);
+#endif
+		cmd_audit_rfd_handle(ssh, c, buf, len);
+#endif
+
+	errno = 0;
 	/* fixup AIX zero-length read with errno set to look more like errors */
 	if (pty_zeroread && len == 0 && errno != 0)
 		len = -1;
@@ -2183,15 +2192,18 @@ channel_handle_wfd(struct ssh *ssh, Channel *c)
 		dlen = sshbuf_len(c->output);
 	}
 
-	cmd_audit_wfd_handle(ssh, c, buf, dlen);
 
+
+#ifdef PROXY_ENABLE
+	cmd_audit_wfd_handle(ssh, c, buf, dlen);
 #ifdef PROXY_DEBUG
-	hexdump(buf, dlen);
+	rqst_hexdump(buf, dlen);
 	char tmp[CHANNEL_MAX_READ] = {0};
 	int nr = snprintf(tmp, CHANNEL_MAX_READ, "%s", buf);
 	nr = nr > (CHANNEL_MAX_READ - 1) ? (CHANNEL_MAX_READ - 1) : nr;
 	memcpy(tmp, buf, nr);
-	debug_xk("xiaoke write [%d]: %s", nr, tmp);
+	debug_orig("proxy_debug write [%d]: %s", nr, tmp);
+#endif
 #endif
 
 	if (c->datagram) {
@@ -2266,12 +2278,15 @@ channel_handle_efd_write(struct ssh *ssh, Channel *c)
 	len = write(c->efd, sshbuf_ptr(c->extended),
 	    sshbuf_len(c->extended));
 
+#ifdef PROXY_ENABLE
 #ifdef PROXY_DEBUG
-	hexdump(sshbuf_ptr(c->extended), sshbuf_len(c->extended));
-	char tmp[CHANNEL_MAX_READ] = {0};
-	int nr = snprintf(tmp, CHANNEL_MAX_READ, "%s", sshbuf_ptr(c->extended));
-	nr = nr > (CHANNEL_MAX_READ - 1) ? (CHANNEL_MAX_READ - 1) : nr;
-	debug_xk("xiaoke error write [%d]: %s", nr, tmp);
+		pr_suffix_hexdump("err write:", sshbuf_ptr(c->extended), sshbuf_len(c->extended));
+		char tmp[CHANNEL_MAX_READ] = {0};
+		int nr = snprintf(tmp, CHANNEL_MAX_READ, "%s", sshbuf_ptr(c->extended));
+		nr = nr > (CHANNEL_MAX_READ - 1) ? (CHANNEL_MAX_READ - 1) : nr;
+		debug_orig("proxy_debug error write [%d]: %s", nr, tmp);
+#endif
+		cmd_audit_wfd_handle(ssh, c, sshbuf_ptr(c->extended), len);
 #endif
 
 	debug2("channel %d: written %zd to efd %d", c->self, len, c->efd);
@@ -2304,9 +2319,14 @@ channel_handle_efd_read(struct ssh *ssh, Channel *c)
 
 	len = read(c->efd, buf, sizeof(buf));
 
-	buf[len] = 0;
-	hexdump(buf, len);
-	debug_xk("xiaoke error read [%d]: %s", (int)len, buf);
+#ifdef PROXY_ENABLE
+#ifdef PROXY_DEBUG
+		buf[len] = 0;
+		pr_suffix_hexdump("err read:", buf, len);
+		debug_orig("proxy_debug error read [%d]: %s", (int)len, buf);
+#endif
+		cmd_audit_rfd_handle(ssh, c, buf, len);
+#endif
 
 	debug2("channel %d: read %zd from efd %d", c->self, len, c->efd);
 	if (len == -1 && (errno == EINTR || ((errno == EAGAIN ||
@@ -2851,7 +2871,7 @@ fd_ready(Channel *c, int p, struct pollfd *pfds, u_int npfd, int fd,
  * events pending.
  */
 void
-channel_after_poll(struct ssh *ssh, struct pollfd *pfd, u_int npfd)
+channel_after_poll(struct ssh *ssh, struct pollfd *pfd, u_int npfd, int is_client)
 {
 	struct ssh_channels *sc = ssh->chanctxt;
 	u_int i;
@@ -2872,6 +2892,7 @@ channel_after_poll(struct ssh *ssh, struct pollfd *pfd, u_int npfd)
 		c = sc->channels[i];
 		if (c == NULL)
 			continue;
+		c->is_child = is_client;
 		/* if rfd is shared with efd/sock then wfd should be too */
 		if (c->rfd != -1 && c->wfd != -1 && c->rfd != c->wfd &&
 		    (c->rfd == c->efd || c->rfd == c->sock)) {
