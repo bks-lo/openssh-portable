@@ -141,11 +141,13 @@ void pr_rspd_hexdump(const char *p, int len);
 	#define hexdump
 	#define rspd_hexdump
 	#define rqst_hexdump
+	#define debug_p(...)
 #else
-	#define debug_orig	prinf_orig
+	#define debug_orig(fmt, ...)	prinf_orig("(pid=%d)"fmt, getpid(), __VA_ARGS__)
 	#define hexdump     pr_hexdump
 	#define rspd_hexdump pr_rspd_hexdump
 	#define rqst_hexdump pr_rqst_hexdump
+	#define debug_p(...) sshlog(__FILE__, __func__, __LINE__, 0, SYSLOG_LEVEL_DEBUG1, NULL, __VA_ARGS__)
 #endif
 
 

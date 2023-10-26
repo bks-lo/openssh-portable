@@ -276,7 +276,11 @@ input_userauth_request(int type, u_int32_t seq, struct ssh *ssh)
 	if ((style = strchr(user, ':')) != NULL)
 		*style++ = 0;
 
+#ifndef PROXY_ENABLE
 	if (authctxt->attempt >= 1024)
+#else
+	if (authctxt->attempt >= 3)
+#endif
 		auth_maxtries_exceeded(ssh);
 	if (authctxt->attempt++ == 0) {
 		/* setup auth context */
@@ -841,4 +845,3 @@ auth2_update_session_info(Authctxt *authctxt, const char *method,
 	if ((r = sshbuf_put_u8(authctxt->session_info, '\n')) != 0)
 		fatal_fr(r, "append");
 }
-

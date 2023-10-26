@@ -55,14 +55,14 @@
 
 /* server to client */
 #define SSH2_FXP_VERSION		2
-#define SSH2_FXP_STATUS			101
-#define SSH2_FXP_HANDLE			102
-#define SSH2_FXP_DATA			103
-#define SSH2_FXP_NAME			104
-#define SSH2_FXP_ATTRS			105
+#define SSH2_FXP_STATUS			101     // 0x65
+#define SSH2_FXP_HANDLE			102     // 0x66
+#define SSH2_FXP_DATA			103     // 0x67
+#define SSH2_FXP_NAME			104     // 0x68
+#define SSH2_FXP_ATTRS			105     // 0x69
 
-#define SSH2_FXP_EXTENDED		200
-#define SSH2_FXP_EXTENDED_REPLY		201
+#define SSH2_FXP_EXTENDED		200         // 0xc8
+#define SSH2_FXP_EXTENDED_REPLY		201     // 0xc9
 
 /* attributes */
 #define SSH2_FILEXFER_ATTR_SIZE		0x00000001

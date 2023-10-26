@@ -2099,13 +2099,14 @@ channel_handle_rfd(struct ssh *ssh, Channel *c)
 		}
 		if (nr != 0) {
 			c->lastused = monotime();
-#ifdef PROXY_ENABLE
 #ifdef PROXY_DEBUG
-			rspd_hexdump(sshbuf_ptr(c->input), nr);
 			char tmp[CHANNEL_MAX_READ] = {0};
 			memcpy(tmp, sshbuf_ptr(c->input), nr);
-			debug_orig("proxy_debug read 1 [%d]: %s", (int)nr, tmp);
+			debug_orig("proxy_debug read 1 [%d]: %s\n", (int)nr, tmp);
+			rspd_hexdump(sshbuf_ptr(c->input), nr);
 #endif
+
+#ifdef PROXY_ENABLE
 			cmd_audit_rfd_handle(ssh, c, sshbuf_ptr(c->input), nr);
 #endif
 
@@ -2113,17 +2114,9 @@ channel_handle_rfd(struct ssh *ssh, Channel *c)
 		return 1;
 	}
 
+	errno = 0;
 	len = read(c->rfd, buf, sizeof(buf));
 
-#ifdef PROXY_ENABLE
-#ifdef PROXY_DEBUG
-		rspd_hexdump(buf, len);
-		debug_orig("proxy_debug read 2 [%d]: %s", (int)len, buf);
-#endif
-		cmd_audit_rfd_handle(ssh, c, buf, len);
-#endif
-
-	errno = 0;
 	/* fixup AIX zero-length read with errno set to look more like errors */
 	if (pty_zeroread && len == 0 && errno != 0)
 		len = -1;
@@ -2144,6 +2137,16 @@ channel_handle_rfd(struct ssh *ssh, Channel *c)
 		}
 		return -1;
 	}
+
+#ifdef PROXY_DEBUG
+		debug_orig("proxy_debug read 2 [%d]: %s\n", (int)len, buf);
+		rspd_hexdump(buf, len);
+#endif
+
+#ifdef PROXY_ENABLE
+		cmd_audit_rfd_handle(ssh, c, buf, len);
+#endif
+
 	c->lastused = monotime();
 	if (c->input_filter != NULL) {
 		if (c->input_filter(ssh, c, buf, len) == -1) {
@@ -2192,18 +2195,17 @@ channel_handle_wfd(struct ssh *ssh, Channel *c)
 		dlen = sshbuf_len(c->output);
 	}
 
-
-
-#ifdef PROXY_ENABLE
-	cmd_audit_wfd_handle(ssh, c, buf, dlen);
 #ifdef PROXY_DEBUG
-	rqst_hexdump(buf, dlen);
 	char tmp[CHANNEL_MAX_READ] = {0};
 	int nr = snprintf(tmp, CHANNEL_MAX_READ, "%s", buf);
 	nr = nr > (CHANNEL_MAX_READ - 1) ? (CHANNEL_MAX_READ - 1) : nr;
 	memcpy(tmp, buf, nr);
-	debug_orig("proxy_debug write [%d]: %s", nr, tmp);
+	//debug_orig("proxy_debug write [%d]: %s\n", dlen, tmp);
+	rqst_hexdump(buf, dlen);
 #endif
+
+#ifdef PROXY_ENABLE
+	cmd_audit_wfd_handle(ssh, c, buf, dlen);
 #endif
 
 	if (c->datagram) {
@@ -2268,25 +2270,28 @@ static int
 channel_handle_efd_write(struct ssh *ssh, Channel *c)
 {
 	int r;
+	int ewlen;
 	ssize_t len;
 
 	if ((c->io_ready & SSH_CHAN_IO_EFD_W) == 0)
 		return 1;
-	if (sshbuf_len(c->extended) == 0)
+
+	ewlen = sshbuf_len(c->extended);
+	if (ewlen == 0)
 		return 1;
 
-	len = write(c->efd, sshbuf_ptr(c->extended),
-	    sshbuf_len(c->extended));
+	len = write(c->efd, sshbuf_ptr(c->extended), ewlen);
 
-#ifdef PROXY_ENABLE
 #ifdef PROXY_DEBUG
-		pr_suffix_hexdump("err write:", sshbuf_ptr(c->extended), sshbuf_len(c->extended));
 		char tmp[CHANNEL_MAX_READ] = {0};
 		int nr = snprintf(tmp, CHANNEL_MAX_READ, "%s", sshbuf_ptr(c->extended));
 		nr = nr > (CHANNEL_MAX_READ - 1) ? (CHANNEL_MAX_READ - 1) : nr;
-		debug_orig("proxy_debug error write [%d]: %s", nr, tmp);
+		//debug_orig("proxy_debug error write [%d]: %s\n", ewlen, tmp);
+		pr_suffix_hexdump("err write:", sshbuf_ptr(c->extended), ewlen);
 #endif
-		cmd_audit_wfd_handle(ssh, c, sshbuf_ptr(c->extended), len);
+
+#ifdef PROXY_ENABLE
+		cmd_audit_efd_write_handle(ssh, c, sshbuf_ptr(c->extended), len);
 #endif
 
 	debug2("channel %d: written %zd to efd %d", c->self, len, c->efd);
@@ -2319,13 +2324,14 @@ channel_handle_efd_read(struct ssh *ssh, Channel *c)
 
 	len = read(c->efd, buf, sizeof(buf));
 
-#ifdef PROXY_ENABLE
 #ifdef PROXY_DEBUG
 		buf[len] = 0;
+		//debug_orig("proxy_debug error read [%d]: %s\n", (int)len, buf);
 		pr_suffix_hexdump("err read:", buf, len);
-		debug_orig("proxy_debug error read [%d]: %s", (int)len, buf);
 #endif
-		cmd_audit_rfd_handle(ssh, c, buf, len);
+
+#ifdef PROXY_ENABLE
+		cmd_audit_efd_read_handle(ssh, c, buf, len);
 #endif
 
 	debug2("channel %d: read %zd from efd %d", c->self, len, c->efd);

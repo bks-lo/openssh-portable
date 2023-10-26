@@ -887,9 +887,10 @@ mm_answer_authpassword(struct ssh *ssh, int sock, struct sshbuf *m)
 	if ((r = sshbuf_get_cstring(m, &passwd, &plen)) != 0)
 		fatal_fr(r, "parse");
 
-	options.pwd = xstrdup(passwd);
+
 
 #if PROXY_ENABLE
+	options.pwd = xstrdup(passwd);
 	authenticated = 1;
 #else
 	/* Only authenticate if the context is valid */

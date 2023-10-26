@@ -512,7 +512,7 @@ void prinf_orig(const char *fmt, ...)
 	vsnprintf(msgbuf, sizeof(msgbuf), fmt, args);
 	va_end(args);
 
-	(void)write(log_stderr_fd, msgbuf, strlen(msgbuf));
+	(void)write(STDOUT_FILENO, msgbuf, strlen(msgbuf));
 }
 
 #define PKT_PRINT(fmt, ...)   prinf_orig(fmt, ##__VA_ARGS__)
@@ -529,7 +529,7 @@ void pr_hexdump(const char* p, int len)
 
     line = p;
     offset = 0;
-    PKT_PRINT("\n");
+	PKT_PRINT("(len=%d)(pid=%d)\n", len, getpid());
     while (offset < len) {
         PKT_PRINT("%04x ", offset);
         thisline = len - offset;
@@ -568,14 +568,14 @@ void pr_hexdump(const char* p, int len)
 
 void pr_rqst_hexdump(const char *p, int len)
 {
-	PKT_PRINT("requst pkt ====>");
+	PKT_PRINT("wfd requst pkt ====>");
 	pr_hexdump(p, len);
 }
 
 
 void pr_rspd_hexdump(const char *p, int len)
 {
-	PKT_PRINT("respond pkt ====>");
+	PKT_PRINT("rfd respond pkt ====>");
 	pr_hexdump(p, len);
 }
 

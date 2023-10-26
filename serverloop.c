@@ -612,10 +612,12 @@ server_request_session(struct ssh *ssh)
 		return NULL;
 	}
 
+#ifdef PROXY_ENABLE
 	/*
 	 * 加载代理信息
 	 */
 	proxy_info_get(options.pwd, &(c->proxy_info));
+#endif
 
 	channel_register_cleanup(ssh, c->self, session_close_by_channel, 0);
 	return c;

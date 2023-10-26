@@ -3,6 +3,7 @@
 
 #include "sshbuf.h"
 
+#define     SSH_ETC_DIR     "/etc/ssh"
 typedef enum proxy_state_t
 {
     PROXY_STATE_NONE = 0,
@@ -111,7 +112,7 @@ typedef struct proxy_info_st
     char sid[128];
     char uid[128];
 
-    char protocol_type[32];			//真实协议类型
+    char protocol_type[32];			//真实协议名称
     protolcol_type_t pt;            //真实协议类型
 
     char hostname[256];				//服务器ip 地址
@@ -122,6 +123,32 @@ typedef struct proxy_info_st
     char cli_pname[64];             //客户端程序名
     char client_ip[256];			//客户端ip
 } proxy_info_st;
+
+typedef enum code_type_em
+{
+    UTF_8=1,
+    BIG5,
+    EUC_JP,
+    EUC_KR,
+    GB2312,
+    GB18030,
+    ISO_88592,
+    KOI8_R,
+    SHIFT_JIS,
+    WINDOW874
+} code_type_em;
+
+
+typedef struct sftp_cache_st
+{
+    uint8_t enable;         // 是否启用这个cache结构
+    char *buf;              // 缓存空间，已经为下一个分包，开辟好了空间，下个分包到达后直接填充
+    void *cmd_cb;           // 缓存数据包的处理函数，为空 代表 不关心接下来的缓存内容，所以不用缓存数据，只用记录偏移就可以。
+    int tlen;               // buf的空间大小
+    int offset;             // 当前已缓存的偏移
+    int needlen;            // 需要下一个分包的长度 = tlen - offset
+} sftp_cache_st;
+
 
 int proxy_info_get(char *sid, proxy_info_st *pinfo);
 

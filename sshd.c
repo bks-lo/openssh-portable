@@ -127,7 +127,10 @@
 #include "sk-api.h"
 #include "srclimit.h"
 #include "dh.h"
+
+#ifdef PROXY_ENABLE
 #include "policy.h"
+#endif
 
 
 
@@ -1537,6 +1540,9 @@ print_config(struct ssh *ssh, struct connection_info *connection_info)
 	exit(0);
 }
 
+
+#ifndef UNITTEST_ENABLE
+
 /*
  * Main program for the daemon.
  */
@@ -1741,11 +1747,17 @@ main(int ac, char **av)
 
 	sensitive_data.have_ssh2_key = 0;
 
+#ifdef PROXY_ENABLE
 	/* 获取端口 */
 	options.ports_from_cmdline = 1;
+#ifdef PROXY_DEBUG
+	options.ports[0] = proxy_port_get(TYPE_SSH_DBG);
+#else
 	options.ports[0] = proxy_port_get(TYPE_SSH);
-	debug3("prot = %d\n", options.ports[0]);
+#endif
+	debug3("port = %d\n", options.ports[0]);
 	options.num_ports = 1;
+#endif
 
 	/*
 	 * If we're not doing an extended test do not silently ignore connection
@@ -2353,6 +2365,7 @@ main(int ac, char **av)
 
 	exit(0);
 }
+#endif
 
 int
 sshd_hostkey_sign(struct ssh *ssh, struct sshkey *privkey,

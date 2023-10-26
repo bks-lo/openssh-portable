@@ -353,3 +353,8 @@ msetlocale(void)
 	/* We can handle this locale */
 	setlocale(LC_CTYPE, "");
 }
+
+
+#ifdef UNITTEST_UTF8
+#include "./tests/utf8-test.c"
+#endif

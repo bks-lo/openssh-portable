@@ -223,6 +223,7 @@ struct Channel {
 	char prompt[1024];
 	cmd_t cmd;
 
+	sftp_cache_st sftp_cache;
 	/* 代理信息 */
 	proxy_info_st proxy_info;
 };
