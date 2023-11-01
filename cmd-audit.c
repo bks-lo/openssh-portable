@@ -132,7 +132,7 @@ int proxy_info_get(char *sid, proxy_info_st *pinfo)
     return 0;
 }
 
-#define SSH_PROXY_CMD	    "/home/xiaoke/dbproxy/openssh-portable/ssh %s@%s -p %d -o PreferredAuthentications=password -d %s"
+#define SSH_PROXY_CMD	    "/home/xiaoke/openssh-portable/ssh %s@%s -p %d -o PreferredAuthentications=password -d %s"
 #define RLOGIN_PROXY_CMD    "/usr/bin/rlogin -l %s -p %d %s"
 #define TELNET_PROXY_CMD    "/usr/bin/telnet -l %s %s %d"
 

@@ -205,37 +205,35 @@ int sftp_open_dir(Channel *c, const char *buf, int len)
     return 0;
 }
 
+int sftp_write(Channel *c, const char *buf, int len)
+{
+    return 0;
+}
+
 sftp_cmd_cb sftp_reqst_handler_get(uint8_t type)
 {
     sftp_cmd_cb ret = NULL;
     switch (type) {
     case SSH2_FXP_OPEN:
         ret = sftp_open;
-        /* code */
         break;
     case SSH2_FXP_WRITE:
-        /* code */
+        ret = sftp_write;
         break;
     case SSH2_FXP_CLOSE:
-        /* code */
         break;
     case SSH2_FXP_REMOVE:
-        /* code */
         break;
     case SSH2_FXP_MKDIR:
-        /* code */
         break;
     case SSH2_FXP_RMDIR:
-        /* code */
         break;
     case SSH2_FXP_RENAME:
-        /* code */
         break;
     case SSH2_FXP_OPENDIR:
         ret = sftp_open_dir;
         break;
     case SSH2_FXP_READDIR:
-        /* code */
         break;
 
     default:
@@ -245,6 +243,7 @@ sftp_cmd_cb sftp_reqst_handler_get(uint8_t type)
     return ret;
 }
 
+#if 0
 /* 进入函数前需确保 dlen 是合法的，函数内部不做校验 */
 static int sftp_reqst_part_handle(Channel *c, uint8_t type, const char *data, int dlen)
 {
@@ -285,6 +284,7 @@ static int sftp_reqst_part_handle(Channel *c, uint8_t type, const char *data, in
 
     return ret;
 }
+#endif
 
 static int sftp_cache_destroy(sftp_cache_st *cache)
 {
