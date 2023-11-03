@@ -115,6 +115,8 @@ typedef struct proxy_info_st
     char protocol_type[32];			//真实协议名称
     protolcol_type_t pt;            //真实协议类型
 
+    int encode;                     //编码格式: utf-8 = 0 , gbk = 1
+
     char hostname[256];				//服务器ip 地址
     char username[256];				//服务器username
     char password[256];				//服务器username
@@ -126,7 +128,8 @@ typedef struct proxy_info_st
 
 typedef enum code_type_em
 {
-    UTF_8=1,
+    UTF_8=0,
+    GBK,
     BIG5,
     EUC_JP,
     EUC_KR,

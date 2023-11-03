@@ -2,6 +2,7 @@
 #include "sftp.h"
 #include "log.h"
 #include "sshbuf.h"
+#include "cmd-common.h"
 
 #pragma pack(1)
 typedef struct sftp_head_st
@@ -164,6 +165,7 @@ int sftp_open(Channel *c, const char *buf, int len)
     const char *data = buf;
     uint32_t fn_len = 0;
     char file_tmp[512] = {0};
+    proxy_info_st *pinfo = &(c->proxy_info);
 
     if (tlen < sizeof(uint32_t)) {
         error("need cache, sftp tlen[%d] < sizeof(uint32_t)", tlen);
@@ -181,6 +183,13 @@ int sftp_open(Channel *c, const char *buf, int len)
 
     snprintf(file_tmp, sizeof(file_tmp), "%.*s", fn_len, data);
     debug_p("sftp open file: %s", file_tmp);
+
+    // 转码
+
+    // 组装还原文件路径
+
+    // 判断是否可以传输文件
+
     cmd_log_send(c, file_tmp, strlen(file_tmp));
     return 0;
 }

@@ -277,6 +277,9 @@ int convert_encode_2_utf8(code_type_em from_type, char *inbuf, size_t inlen, cha
     case BIG5:
         ret = code_convert("BIG5", "UTF8", inbuf, inlen, outbuf, outlen);
         break;
+    case GBK:
+        ret = code_convert("GBK", "UTF8", inbuf, inlen, outbuf, outlen);
+        break;
     case EUC_JP:
         ret = code_convert("EUC-JP", "UTF8", inbuf, inlen, outbuf, outlen);
         break;
@@ -299,7 +302,7 @@ int convert_encode_2_utf8(code_type_em from_type, char *inbuf, size_t inlen, cha
         ret = code_convert("SHIFT-JIS", "UTF8", inbuf, inlen, outbuf, outlen);
         break;
     case WINDOW874:
-        ret = code_convert("SHIFT-JIS", "UTF8", inbuf, inlen, outbuf, outlen);
+        ret = code_convert("WINDOWS-874", "UTF8", inbuf, inlen, outbuf, outlen);
         break;
     default:
         break;
@@ -308,8 +311,27 @@ int convert_encode_2_utf8(code_type_em from_type, char *inbuf, size_t inlen, cha
     return ret;
 }
 
+inline int need_convert(Channel *c)
+{
+    proxy_info_st *pinfo = &(c->proxy_info);
+    return (pinfo->encode != UTF_8);
+}
+
+char *convert_encode(Channel *c, char *inbuf, size_t inlen)
+{
+    proxy_info_st *pinfo = &(c->proxy_info);
+
+    if (!need_convert) {
+        return inbuf;
+    }
+}
+
 int cmd_log_send(Channel *c, char *buf, int len)
 {
+    proxy_info_st *pinfo = &(c->proxy_info);
+    if (pinfo->encode != UTF_8) {
+
+    }
     return 0;
 }
 
