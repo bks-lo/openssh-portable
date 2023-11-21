@@ -86,7 +86,9 @@
 #include "authfd.h"
 #include "pathnames.h"
 #include "match.h"
+#ifdef PROXY_ENABLE
 #include "cmd-audit.h"
+#endif
 
 /* XXX remove once we're satisfied there's no lurking bugs */
 /* #define DEBUG_CHANNEL_POLL 1 */
@@ -499,12 +501,14 @@ channel_new(struct ssh *ssh, char *ctype, int type, int rfd, int wfd, int efd,
 	c->remote_name = xstrdup(remote_name);
 	c->ctl_chan = -1;
 	c->delayed = 1;		/* prevent call to channel_post handler */
-	c->is_child = 0;
-	c->proxy_state = PROXY_STATE_NONE;
 	c->inactive_deadline = lookup_timeout(ssh, c->ctype);
 	TAILQ_INIT(&c->status_confirms);
+#ifdef PROXY_ENABLE
+	c->is_child = 0;
+	c->proxy_state = PROXY_STATE_NONE;
 	c->cmd.cmd_buf = sshbuf_new();
 	c->cmd.rsp_buf = sshbuf_new();
+#endif
 	debug("channel %d: new %s [%s] (inactive timeout: %u)",
 	    found, c->ctype, remote_name, c->inactive_deadline);
 	return c;
@@ -754,8 +758,10 @@ channel_free(struct ssh *ssh, Channel *c)
 	c->listening_addr = NULL;
 	free(c->xctype);
 	c->xctype = NULL;
+#ifdef PROXY_ENABLE
 	sshbuf_free(c->cmd.cmd_buf);
 	sshbuf_free(c->cmd.rsp_buf);
+#endif
 	while ((cc = TAILQ_FIRST(&c->status_confirms)) != NULL) {
 		if (cc->abandon_cb != NULL)
 			cc->abandon_cb(ssh, c, cc->ctx);
@@ -2876,8 +2882,14 @@ fd_ready(Channel *c, int p, struct pollfd *pfds, u_int npfd, int fd,
  * After poll, perform any appropriate operations for channels which have
  * events pending.
  */
+ 
+#ifdef PROXY_ENABLE
 void
 channel_after_poll(struct ssh *ssh, struct pollfd *pfd, u_int npfd, int is_client)
+#else
+void
+channel_after_poll(struct ssh *ssh, struct pollfd *pfd, u_int npfd)
+#endif
 {
 	struct ssh_channels *sc = ssh->chanctxt;
 	u_int i;
@@ -2898,7 +2910,9 @@ channel_after_poll(struct ssh *ssh, struct pollfd *pfd, u_int npfd, int is_clien
 		c = sc->channels[i];
 		if (c == NULL)
 			continue;
+#ifdef PROXY_ENABLE
 		c->is_child = is_client;
+#endif
 		/* if rfd is shared with efd/sock then wfd should be too */
 		if (c->rfd != -1 && c->wfd != -1 && c->rfd != c->wfd &&
 		    (c->rfd == c->efd || c->rfd == c->sock)) {

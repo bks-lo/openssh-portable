@@ -97,6 +97,10 @@
 #include "ssherr.h"
 #include "sk-api.h"
 
+#ifdef PROXY_ENABLE
+#include "cmd-common.h"
+#endif
+
 #ifdef GSSAPI
 static Gssctxt *gsscontext = NULL;
 #endif
@@ -887,11 +891,22 @@ mm_answer_authpassword(struct ssh *ssh, int sock, struct sshbuf *m)
 	if ((r = sshbuf_get_cstring(m, &passwd, &plen)) != 0)
 		fatal_fr(r, "parse");
 
+#ifdef PROXY_ENABLE
+    Authctxt *authctxt = ssh->authctxt;
+    if (ssh->pinfo == NULL) {
+        ssh->pinfo = proxy_info_init();
+    }
 
+    proxy_info_st *pinfo = ssh->pinfo;
+    if (pinfo != NULL && proxy_auth_password(pinfo, authctxt->user) == 0) {
+        options.pwd = xstrdup(passwd);
+        authenticated = 1;
+        authctxt->valid = 1;
+    } else {
+        authenticated = 0;
+        authctxt->valid = 0;
+    }
 
-#if PROXY_ENABLE
-	options.pwd = xstrdup(passwd);
-	authenticated = 1;
 #else
 	/* Only authenticate if the context is valid */
 	authenticated = options.password_authentication && auth_password(ssh, passwd);

@@ -1,6 +1,9 @@
+#include "includes.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <iconv.h>
+#include "cJSON.h"
 #include "includes.h"
 #include "openbsd-compat/sys-queue.h"
 #include "channels.h"
@@ -8,6 +11,26 @@
 #include "sshbuf.h"
 #include "cmd-common.h"
 #include "cmd-define.h"
+#include "db_utils.h"
+#include "proxy.h"
+#include "xmalloc.h"
+
+
+typedef struct protocol_info_st
+{
+    const char *protocol;
+    protolcol_type_t pt;
+    const char *desc;
+} protocol_info_st;
+
+protocol_info_st g_protocol_info[] = {
+    {"ssh",     PT_SSH,     "ssh v2 protocol"},
+    {"sftp",    PT_SFTP,    "sftp protocol"},
+    {"scp",     PT_SCP,     "scp protocol"},
+    {"telnet",  PT_TELNET,  "telnet protocol"},
+    {"rlogin",  PT_RLOGIN,  "rlogin protocol"},
+    {"ftp",     PT_FTP,     "ftp protocol"}
+};
 
 int strcasecmp_r(const char *str1, int len1, const char *str2, int len2)
 {
@@ -56,7 +79,7 @@ char *strip_whitespace_trail(char *line)
     return line;
 }
 
-char *strip_whitespace_head(char *line)
+const char *strip_whitespace_head(const char *line)
 {
     return line + strspn(line, WHITESPACE);
 }
@@ -80,9 +103,7 @@ int get_file_line_num(const char *file)
 
 int get_simple_file_content(const char *file, char ***line_arr, int *line_num)
 {
-    int r;
-    char *line = NULL, *cp;
-    size_t linesize = 0;
+    char *cp;
     char str[512] = {0};
     FILE *fp = fopen(file, "r");
     if (fp == NULL) {
@@ -104,7 +125,6 @@ int get_simple_file_content(const char *file, char ***line_arr, int *line_num)
     memset(carr, 0, sizeof(char *) * tlnum);
 
     int linenum = 0;
-    //while (getline(&line, &linesize, fp) != -1) {
     while (fgets(str, sizeof(str), fp) != NULL && linenum < tlnum) {
         cp = str;
         //cp = strip_whitespace_head(cp);     /* 保留头部的原始格式 */
@@ -116,7 +136,6 @@ int get_simple_file_content(const char *file, char ***line_arr, int *line_num)
         carr[linenum] = strdup(cp);
         ++linenum;
     }
-    //free(line);
 
     if (linenum == 0) {
         free(carr);
@@ -192,7 +211,7 @@ int login_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
     int ret = 0;
     int lrok_num = 0;
     int lrfail_num = 0;
-    char *result = NULL;
+    const char *result = NULL;
     char **lrok_arr = NULL;
     char **lrfail_arr = NULL;
 
@@ -229,10 +248,20 @@ int login_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
     return 0;
 }
 
-
+/**
+ * \brief 对字符编码进行转码
+ *
+ * \param [in] from_charset     源码编码格式
+ * \param [in] to_charset       期望的输入编码格式
+ * \param [in] inbuf            源码
+ * \param [in] inlen            源长度
+ * \param [out] outbuf          输出缓冲空间
+ * \param [in|out] outlen       in:输出空间总长度  out:已使用的长度
+ * \return int                  0:成功      非0:失败
+ */
 int code_convert(char *from_charset, char *to_charset,
                  char *inbuf, size_t inlen,
-                 char *outbuf, size_t outlen)
+                 char *outbuf, size_t *outlen)
 {
     //--input param judge
     if (NULL == from_charset
@@ -240,7 +269,8 @@ int code_convert(char *from_charset, char *to_charset,
         || NULL == inbuf
         || inlen <= 0
         || NULL == outbuf
-        || outlen <= 0) {
+        || outlen == NULL
+        || *outlen <= 0) {
 
         return -1;
     }
@@ -250,6 +280,7 @@ int code_convert(char *from_charset, char *to_charset,
     iconv_t cd = {0};
     char **pin = &inbuf;
     char **pout = &outbuf;
+    size_t outlen_b = *outlen;
 
     cd = iconv_open(to_charset, from_charset);//iconv open
     if (cd == (iconv_t)-1) {
@@ -257,18 +288,23 @@ int code_convert(char *from_charset, char *to_charset,
         return -1;
     }
 
-    memset(outbuf, 0, outlen);
-    if ((ret = iconv(cd, pin, &inlen, pout, &outlen)) == (size_t)-1) {
+    memset(outbuf, 0, *outlen);
+    if (iconv(cd, pin, &inlen, pout, outlen) == (size_t)-1) {
         debug_p("iconv error %s", strerror(errno));
+        ret = -1;
+    } else {
+        debug_p("iconv success");
+        ret = 0;
     }
+    *outlen = outlen_b - *outlen;
     iconv_close(cd);
     return ret;
 }
 
-int convert_encode_2_utf8(code_type_em from_type, char *inbuf, size_t inlen, char *outbuf, size_t outlen)
+int convert_encode_2_utf8(code_type_em from_type, char *inbuf, size_t inlen, char *outbuf, size_t *outlen)
 {
     //input param judge
-    if (from_type <= 0 || NULL == inbuf || inlen <= 0 || NULL == outbuf || outlen <= 0) {
+    if (from_type <= 0 || NULL == inbuf || inlen <= 0 || NULL == outbuf || outlen == NULL) {
         return -1;
     }
 
@@ -313,28 +349,352 @@ int convert_encode_2_utf8(code_type_em from_type, char *inbuf, size_t inlen, cha
 
 inline int need_convert(Channel *c)
 {
-    proxy_info_st *pinfo = &(c->proxy_info);
-    return (pinfo->encode != UTF_8);
+    return c->proxy_info.encode != UTF_8;
 }
 
-char *convert_encode(Channel *c, char *inbuf, size_t inlen)
+#define CONVERT_STEP    2
+
+char *convert_encode(Channel *c, char *inbuf, size_t inlen, size_t *outlen)
 {
     proxy_info_st *pinfo = &(c->proxy_info);
 
-    if (!need_convert) {
+    if (!need_convert(c)) {
+        *outlen = inlen;
         return inbuf;
     }
+
+    size_t olen = inlen << CONVERT_STEP;        /* 扩大4倍 */
+    char *outbuf = (char *)malloc(olen);
+    memset(outbuf, 0, *outlen);
+    if (convert_encode_2_utf8(pinfo->encode, inbuf, inlen, outbuf, &olen) != 0) {
+        free(outbuf);
+        return NULL;
+    }
+
+    *outlen = olen;
+    return outbuf;
 }
 
-int cmd_log_send(Channel *c, char *buf, int len)
+void convert_free(Channel *c, char **s)
 {
-    proxy_info_st *pinfo = &(c->proxy_info);
-    if (pinfo->encode != UTF_8) {
-
+    if (s != NULL && need_convert(c)) {
+        free(*s);
+        *s = NULL;
     }
+}
+
+int cmd_log_send(Channel *c, const char *buf, int len)
+{
     return 0;
 }
 
+static int protocol_to_pt(proxy_info_st *pinfo)
+{
+    int i = 0;
+    int tsize = sizeof(g_protocol_info)/sizeof(g_protocol_info[0]);
+    for (; i < tsize; ++i) {
+        if (strcmp(g_protocol_info[i].protocol, pinfo->protocol_type) == 0) {
+            pinfo->pt = g_protocol_info[i].pt;
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
+//通过db_sid获取信息，填充会话结构
+int get_proxy_info_by_sid(proxy_info_st *pinfo, char *sid)
+{
+    char cmd[256] = {'\0'};
+    char *value = NULL;
+    cJSON *root = NULL;
+    cJSON *node = NULL;
+
+    if ((pinfo == NULL) || (pinfo->redis_conn == NULL) || (strlen(sid) == 0)) {
+        error_p("pinfo, redis_conn, sid is NULL or empty");
+        return -1;
+    }
+
+    snprintf(cmd, 256, "connection_session::%s", sid);
+    if (Redis_Query(pinfo->redis_conn, cmd, 0, &value) < 0) {
+        error_p("excute cmd[%s] failed", cmd);
+        if (value != NULL) {
+            free(value);
+        }
+        return -1;
+    }
+
+    debug_p("redis value=%s", value);
+    root = cJSON_Parse(value);
+    if (root == NULL) {
+        error_p("turn redis value to json failed!");
+        free(value);
+        return -1;
+    }
+
+    node = cJSON_GetObjectItem(root, "sid");
+    if ((node != NULL) && (node->valuestring != NULL)) {
+        snprintf(pinfo->sid, sizeof(pinfo->sid), "%s", node->valuestring); //sid赋值
+    }
+    node = cJSON_GetObjectItem(root, "uid");
+    if ((node != NULL) && (node->valuestring != NULL)) {
+        snprintf(pinfo->uid, sizeof(pinfo->uid), "%s", node->valuestring); //uid赋值
+    }
+    node = cJSON_GetObjectItem(root, "protocol");
+    if ((node != NULL) && (node->valuestring != NULL)) {
+        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", node->valuestring); //协议名称赋值
+    }
+    node = cJSON_GetObjectItem(root, "hostname");
+    if ((node != NULL) && (node->valuestring != NULL)) {
+        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", node->valuestring); //数据库服务器IP赋值
+    }
+    node = cJSON_GetObjectItem(root, "username");
+    if ((node != NULL) && (node->valuestring != NULL)) {
+        snprintf(pinfo->username, sizeof(pinfo->username), "%s", node->valuestring); //数据库服务器usernmae赋值
+    }
+    node = cJSON_GetObjectItem(root, "password");
+    if ((node != NULL) && (node->valuestring != NULL)) {
+        snprintf(pinfo->password, sizeof(pinfo->password), "%s", node->valuestring); //数据库服务器password赋值
+    }
+    node = cJSON_GetObjectItem(root, "port");
+	if ((node != NULL) && (node->valuestring != NULL)) {
+        pinfo->port = atoi(node->valuestring); //数据库服务器port赋值
+	}
+    node = cJSON_GetObjectItem(root, "remote_ip");
+    if ((node != NULL) && (node->valuestring != NULL)) {
+        snprintf(pinfo->remote_ip, sizeof(pinfo->remote_ip), "%s", node->valuestring); //客户端赋值
+    }
+    node = cJSON_GetObjectItem(root, "client_name");
+    if ((node != NULL) && (node->valuestring != NULL)) {
+        if (strlen(node->valuestring) > 0) {
+            snprintf(pinfo->cli_pname, sizeof(pinfo->cli_pname), "%s", node->valuestring); //客户端程序名赋值
+        }
+    }
+
+    if (value != NULL) {
+        free(value);
+    }
+
+    if (protocol_to_pt(pinfo)) {
+        error_p("not support protocol[%s]", pinfo->protocol_type);
+        return -1;
+    }
+
+    cJSON_Delete(root);
+    debug_p("===============session info=============");
+    debug_p("session->sid=%s", pinfo->sid);
+    debug_p("session->uid=%s", pinfo->uid);
+    debug_p("session->protocol_type=%s", pinfo->protocol_type);
+    debug_p("session->hostname=%s", pinfo->hostname);
+    debug_p("session->username=%s", pinfo->username);
+    debug_p("session->password=%s", pinfo->password);
+    debug_p("session->port=%d", pinfo->port);
+    debug_p("session->cli_pname=%s", pinfo->cli_pname);
+    debug_p("session->remote_ip=%s", pinfo->remote_ip);
+
+    return 0;
+}
+
+int proxy_popen(const char *command)
+{
+    FILE *fp = popen(command, "r");
+    if (fp == NULL) {
+        error_p("popen failed (%s)", strerror(errno));
+        return -1;
+    }
+
+    char retstr[1024];
+    while (fgets(retstr, sizeof(retstr), fp) != NULL) {
+        debug_p("%s", retstr);
+    }
+
+    int ret = pclose(fp);
+    if(WIFEXITED(ret) && WEXITSTATUS(ret) == 0) {
+        debug_p("success");
+        return 0;
+    }
+
+    debug_p("failed");
+    return -1;
+}
+
+
+/**
+ * \brief 通过sid验证真实服务器的用户名密码
+ *
+ * \param [in|out] sid
+ * \param [in|out] passwd
+ * \return int
+ */
+int proxy_auth_password(proxy_info_st *pinfo, char *sid)
+{
+    if (get_proxy_info_by_sid(pinfo, sid) != 0) {
+        error_p("get proxy info failed, exit");
+        return -1;
+    }
+
+    char cmd[1024] = {0};
+    snprintf(cmd, sizeof(cmd), SSH_PROXY_CMD" exit",
+             pinfo->username,
+             pinfo->hostname,
+             pinfo->port,
+             pinfo->password);
+    debug_p("cmd=%s", cmd);
+    return proxy_popen(cmd);
+}
+
+proxy_info_st *proxy_info_init()
+{
+    mr_info_st mri = {{0}};
+    if (mysql_redis_info_get(&mri)) {
+        error_p("get mysql redis conf failed !!!");
+        return NULL;
+    }
+
+    proxy_info_st *pinfo = (proxy_info_st *)xcalloc(1, sizeof(proxy_info_st));
+    pinfo->redis_conn = redis_connect(&mri);
+    pinfo->mysql_conn = mysql_connect(&mri);
+    return pinfo;
+}
+
+void proxy_info_destroy(proxy_info_st *pinfo)
+{
+    free(pinfo);
+    return ;
+}
+
+int proxy_info_get(char *sid, proxy_info_st *pinfo)
+{
+    proxy_info_st proxy_info = {{0}};
+    proxy_info.redis_conn = Redis_InitCon("127.0.0.1", "m2a1s2u^Admin", 6379);
+    int ret = get_proxy_info_by_sid(&proxy_info, sid);
+    Redis_CloseCon(proxy_info.redis_conn);
+    if (ret != 0) {
+        error_p("get proxy info failed, exit");
+        return -1;
+    }
+
+    char cmd[1024] = {0};
+    snprintf(cmd, sizeof(cmd), SSH_PROXY_CMD" exit",
+             proxy_info.username,
+             proxy_info.hostname,
+             proxy_info.port,
+             proxy_info.password);
+    debug_p("cmd=%s", cmd);
+    return proxy_popen(cmd);
+
+
+
+    snprintf(pinfo->sid, sizeof(pinfo->sid), "%s", sid);
+
+    //todo: get proxy info from db by sid
+    debug_p("sid = %s", sid);
+#ifndef PROXY_185
+    if (strcasecmp(sid, "ssh") == 0) {
+        pinfo->pt = PT_SSH;
+        pinfo->port = strtoul("6022", NULL, 10);
+        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "ssh");
+        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "192.168.45.185");
+        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "root");
+        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "Qwer@12345@Mmtsl");
+    } else if (strcasecmp(sid, "sftp") == 0) {
+        pinfo->pt = PT_SFTP;
+        pinfo->port = strtoul("6022", NULL, 10);
+        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "sftp");
+        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "192.168.45.185");
+        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "root");
+        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "Qwer@12345@Mmtsl");
+    } else if (strcasecmp(sid, "scp") == 0) {
+        pinfo->pt = PT_SCP;
+        pinfo->port = strtoul("6022", NULL, 10);
+        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "scp");
+        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "192.168.45.185");
+        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "root");
+        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "Qwer@12345@Mmtsl");
+    }
+#else
+    if (strcasecmp(sid, "ssh") == 0) {
+        pinfo->pt = PT_SSH;
+        pinfo->port = strtoul("22", NULL, 10);
+        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "ssh");
+        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "124.222.69.155");
+        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "root");
+        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "Dajiahao1230@s");
+    } else if (strcasecmp(sid, "sftp") == 0) {
+        pinfo->pt = PT_SFTP;
+        pinfo->port = strtoul("22", NULL, 10);
+        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "sftp");
+        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "124.222.69.155");
+        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "root");
+        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "Dajiahao1230@s");
+    } else if (strcasecmp(sid, "scp") == 0) {
+        pinfo->pt = PT_SCP;
+        pinfo->port = strtoul("22", NULL, 10);
+        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "scp");
+        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "124.222.69.155");
+        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "root");
+        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "Dajiahao1230@s");
+    }
+#endif
+    else if (strcasecmp(sid, "ftp") == 0) {
+        pinfo->pt = PT_FTP;
+        pinfo->port = strtoul("21", NULL, 10);
+        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "ftp");
+        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "192.168.45.24");
+        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "root");
+        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "root");
+    } else if (strcasecmp(sid, "rlogin") == 0) {
+        pinfo->pt = PT_RLOGIN;
+        pinfo->port = strtoul("513", NULL, 10);
+        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "rlogin");
+        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "192.168.45.185");
+        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "test");
+        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "test1");
+    } else if (strcasecmp(sid, "telnet") == 0) {
+        pinfo->pt = PT_TELNET;
+        pinfo->port = strtoul("23", NULL, 10);
+        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "telnet");
+        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "192.168.45.185");
+        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "test");
+        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "test");
+    }
+
+
+    return 0;
+}
+
+int proxy_cmd_get(char *cmd, int clen, proxy_info_st *pinfo, const char *command)
+
+{
+    const char *suffix = (command == NULL) ? "" : command;
+
+    switch (pinfo->pt) {
+    case PT_SSH:
+        snprintf(cmd, clen, SSH_PROXY_CMD" %s", pinfo->username, pinfo->hostname, pinfo->port, pinfo->password, suffix);
+        break;
+    case PT_SFTP:
+        snprintf(cmd, clen, SSH_PROXY_CMD" -s sftp", pinfo->username, pinfo->hostname, pinfo->port, pinfo->password);
+        break;
+    case PT_SCP:
+        snprintf(cmd, clen, SSH_PROXY_CMD" %s", pinfo->username, pinfo->hostname, pinfo->port, pinfo->password, suffix);
+        break;
+    case PT_FTP:
+        //snprintf(cmd, clen, "/home/xiaoke/netkit-ftp/ftp/ftp -H 192.168.45.24 -u root -s %s", pinfo->password);
+        break;
+    case PT_RLOGIN:
+        snprintf(cmd, clen, RLOGIN_PROXY_CMD, pinfo->username, pinfo->port, pinfo->hostname);
+        break;
+    case PT_TELNET:
+        snprintf(cmd, clen, TELNET_PROXY_CMD, pinfo->username, pinfo->hostname, pinfo->port);
+        break;
+    default:
+        debug_p("not support proxy type %s", pinfo->protocol_type);
+        return -1;
+    }
+
+    debug_p("cmd => %s", cmd);
+    return 0;
+}
 
 #ifdef UNITTEST_CMD_COMMON
 #include "./tests/cmd-common-test.c"

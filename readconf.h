@@ -75,6 +75,7 @@ typedef struct {
 	char   *proxy_command;	/* Proxy command for connecting the host. */
 	char   *user;		/* User to log in as. */
 	char   *pwd;
+
 	int     escape_char;	/* Escape character; -2 = none */
 
 	u_int	num_system_hostfiles;	/* Paths for /etc/ssh/ssh_known_hosts */

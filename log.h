@@ -136,18 +136,35 @@ void pr_rspd_hexdump(const char *p, int len);
 #define logdie_fr(r, ...)	sshlogdie(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_ERROR, ssh_err(r), __VA_ARGS__)
 #define sigdie_fr(r, ...)	sshsigdie(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_ERROR, ssh_err(r), __VA_ARGS__)
 
-#ifndef PROXY_DEBUG
-	#define debug_orig
+
+#define error_p(...)		sshlog(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_ERROR, "[proxy] ", __VA_ARGS__)
+#define fatal_p(...)		sshfatal(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_FATAL, "[proxy] ", __VA_ARGS__)
+#define logdie_p(...)		sshlogdie(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_ERROR, "[proxy] ", __VA_ARGS__)
+#define sigdie_p(...)		sshsigdie(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_ERROR, "[proxy] ", __VA_ARGS__)
+
+#ifdef PROXY_DEBUG
+    #define debug_orig(fmt, ...)	prinf_orig("(pid=%d)"fmt, getpid(), __VA_ARGS__)
+	#define hexdump                 pr_hexdump
+	#define rspd_hexdump            pr_rspd_hexdump
+	#define rqst_hexdump            pr_rqst_hexdump
+    void pr_suffix_hexdump(const char *suffix, const char *p, int len);
+
+    #define debug3_p(...)		sshlog(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_DEBUG3, "[proxy] ", __VA_ARGS__)
+    #define debug2_p(...)		sshlog(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_DEBUG2, "[proxy] ", __VA_ARGS__)
+    #define debug_p(...)		sshlog(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_DEBUG1, "[proxy] ", __VA_ARGS__)
+    #define verbose_p(...)		sshlog(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_VERBOSE, "[proxy] ", __VA_ARGS__)
+    #define logit_p(...)		sshlog(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_INFO, "[proxy] ", __VA_ARGS__)
+#else
+	#define debug_orig(fmt, ...)
 	#define hexdump
 	#define rspd_hexdump
 	#define rqst_hexdump
-	#define debug_p(...)
-#else
-	#define debug_orig(fmt, ...)	prinf_orig("(pid=%d)"fmt, getpid(), __VA_ARGS__)
-	#define hexdump     pr_hexdump
-	#define rspd_hexdump pr_rspd_hexdump
-	#define rqst_hexdump pr_rqst_hexdump
-	#define debug_p(...) sshlog(__FILE__, __func__, __LINE__, 0, SYSLOG_LEVEL_DEBUG1, NULL, __VA_ARGS__)
+
+    #define debug3_p(...)
+    #define debug2_p(...)
+    #define debug_p(...)
+    #define verbose_p(...)
+    #define logit_p(...)
 #endif
 
 

@@ -44,6 +44,9 @@ struct session_state;	/* private session data */
 
 #include "dispatch.h"	/* typedef, DISPATCH_MAX */
 
+#ifdef PROXY_ENABLE
+#include "cmd-define.h"
+#endif
 struct key_entry {
 	TAILQ_ENTRY(key_entry) next;
 	struct sshkey *key;
@@ -83,6 +86,11 @@ struct ssh {
 
 	/* Channels context */
 	struct ssh_channels *chanctxt;
+
+#ifdef PROXY_ENABLE
+    /* proxy info*/
+    proxy_info_st *pinfo;
+#endif
 
 	/* APP data */
 	void *app_data;

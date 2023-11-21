@@ -389,7 +389,11 @@ server_loop2(struct ssh *ssh, Authctxt *authctxt)
 			cleanup_exit(255);
 		}
 
+#ifdef PROXY_ENABLE
 		channel_after_poll(ssh, pfd, npfd_active, 0);
+#else
+		channel_after_poll(ssh, pfd, npfd_active);
+#endif
 		if (conn_in_ready &&
 		    process_input(ssh, connection_in) < 0)
 			break;
@@ -616,7 +620,9 @@ server_request_session(struct ssh *ssh)
 	/*
 	 * 加载代理信息
 	 */
-	proxy_info_get(options.pwd, &(c->proxy_info));
+	//proxy_info_get(options.pwd, &(c->proxy_info));
+
+    memcpy(&(c->proxy_info), ssh->pinfo, sizeof(proxy_info_st));
 #endif
 
 	channel_register_cleanup(ssh, c->self, session_close_by_channel, 0);

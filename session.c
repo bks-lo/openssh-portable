@@ -435,8 +435,10 @@ do_exec_no_pty(struct ssh *ssh, Session *s, const char *command)
 	session_proctitle(s);
 
 	/* 设置为登录状态 */
+#ifdef PROXY_ENABLE
 	Channel *c = channel_by_id(ssh, s->chanid);
 	c->proxy_state = PROXY_STATE_LOGIN;
+#endif
 
 	/* Fork the child. */
 	switch ((pid = fork())) {
@@ -591,8 +593,10 @@ do_exec_pty(struct ssh *ssh, Session *s, const char *command)
 	}
 
 	/* 设置为登录状态 */
+#ifdef PROXY_ENABLE
 	Channel *c = channel_by_id(ssh, s->chanid);
 	c->proxy_state = PROXY_STATE_LOGIN;
+#endif
 
 	/* Fork the child. */
 	switch ((pid = fork())) {
@@ -1531,7 +1535,9 @@ do_child(struct ssh *ssh, Session *s, const char *command)
 	struct passwd *pw = s->pw;
 	int r = 0;
 
+#if PROXY_ENABLE
 	Channel *c = channel_by_id(ssh, s->chanid);
+#endif
 
 	sshpkt_fmt_connection_id(ssh, remote_id, sizeof(remote_id));
 

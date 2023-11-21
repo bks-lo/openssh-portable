@@ -1,3 +1,4 @@
+#include <string.h>
 #include "includes.h"
 #include "openbsd-compat/sys-queue.h"
 #include "channels.h"
@@ -298,10 +299,7 @@ static int wfd_cmd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 
 static int rfd_respd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 {
-    int ch = 0;
     cmd_t *pcmd = &(c->cmd);
-
-
 
 #if 0
 

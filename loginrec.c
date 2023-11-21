@@ -387,8 +387,14 @@ login_init_entry(struct logininfo *li, pid_t pid, const char *username,
 		strlcpy(li->username, username, sizeof(li->username));
 		pw = getpwnam(li->username);
 		if (pw == NULL) {
+#ifdef PROXY_ENABLE
+            debug_p("%s: Cannot find user \"%s\", use fakepw!!!", __func__,
+			    li->username);
+            pw = fakepw();
+#else
 			fatal("%s: Cannot find user \"%s\"", __func__,
 			    li->username);
+#endif
 		}
 		li->uid = pw->pw_uid;
 	}
@@ -1547,10 +1553,10 @@ lastlog_write_entry(struct logininfo *li)
 		strlcpy(last.ll_host, li->hostname,
 		    MIN_SIZEOF(last.ll_host, li->hostname));
 		last.ll_time = li->tv_sec;
-	
+
 		if (!lastlog_openseek(li, &fd, O_RDWR|O_CREAT))
 			return (0);
-	
+
 		/* write the entry */
 		if (atomicio(vwrite, fd, &last, sizeof(last)) != sizeof(last)) {
 			close(fd);
@@ -1558,7 +1564,7 @@ lastlog_write_entry(struct logininfo *li)
 			    LASTLOG_FILE, strerror(errno));
 			return (0);
 		}
-	
+
 		close(fd);
 		return (1);
 	default:

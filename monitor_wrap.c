@@ -431,6 +431,14 @@ mm_auth_password(struct ssh *ssh, char *password)
 	sshbuf_free(m);
 
 	debug3_f("user %sauthenticated", authenticated ? "" : "not ");
+#ifdef PROXY_ENABLE
+    Authctxt *authctxt = ssh->authctxt;
+    if (authenticated) {
+        authctxt->valid = 1;
+    } else {
+        authctxt->valid = 0;
+    }
+#endif
 	return (authenticated);
 }
 

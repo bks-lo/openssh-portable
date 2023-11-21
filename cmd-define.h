@@ -1,9 +1,15 @@
 #ifndef _CMD_DEFINE_H
 #define _CMD_DEFINE_H
 
+#include <hiredis/hiredis.h>
 #include "sshbuf.h"
 
-#define     SSH_ETC_DIR     "/etc/ssh"
+#define     SSH_ETC_DIR         "/etc/ssh"
+#define     SSH_EXE_DIR         "/home/xiaoke/openssh-portable/"
+#define     SSH_PROXY_CMD       SSH_EXE_DIR"ssh %s@%s -p %d -o PreferredAuthentications=password -d %s"
+#define     RLOGIN_PROXY_CMD    "/usr/bin/rlogin -l %s -p %d %s"
+#define     TELNET_PROXY_CMD    "/usr/bin/telnet -l %s %s %d"
+
 typedef enum proxy_state_t
 {
     PROXY_STATE_NONE = 0,
@@ -24,7 +30,6 @@ typedef enum login_state_t
 
 typedef enum protolcol_type_t
 {
-    PT_NONE,
     PT_SSH,
     PT_SFTP,
     PT_SCP,
@@ -106,26 +111,6 @@ typedef struct cmd_t
     struct sshbuf      *orig_bug;           /**< 原始数据 */
 } cmd_t;
 
-
-typedef struct proxy_info_st
-{
-    char sid[128];
-    char uid[128];
-
-    char protocol_type[32];			//真实协议名称
-    protolcol_type_t pt;            //真实协议类型
-
-    int encode;                     //编码格式: utf-8 = 0 , gbk = 1
-
-    char hostname[256];				//服务器ip 地址
-    char username[256];				//服务器username
-    char password[256];				//服务器username
-    int port;   				    //服务器port
-
-    char cli_pname[64];             //客户端程序名
-    char client_ip[256];			//客户端ip
-} proxy_info_st;
-
 typedef enum code_type_em
 {
     UTF_8=0,
@@ -140,6 +125,30 @@ typedef enum code_type_em
     SHIFT_JIS,
     WINDOW874
 } code_type_em;
+
+
+typedef struct proxy_info_st
+{
+    char sid[128];                  //
+    char uid[128];                  //
+
+    void *redis_conn;               // redis连接句柄，取配置用
+    void *mysql_conn;               // MySQL连接句柄，发送日志用
+
+    char protocol_type[32];         //真实协议名称
+    protolcol_type_t pt;            //真实协议类型
+
+    code_type_em encode;            //编码格式: utf-8 = 0 , gbk = 1
+
+    char hostname[256];             //服务器ip 地址
+    char username[256];             //服务器username
+    char password[256];             //服务器username
+    char remote_ip[256];            //客户端ip
+    int port;                       //服务器port
+
+    char cli_pname[64];             //客户端程序名
+    char client_ip[256];            //客户端ip
+} proxy_info_st;
 
 
 typedef struct sftp_cache_st

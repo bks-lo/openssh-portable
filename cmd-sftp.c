@@ -3,6 +3,7 @@
 #include "log.h"
 #include "sshbuf.h"
 #include "cmd-common.h"
+#include <string.h>
 
 #pragma pack(1)
 typedef struct sftp_head_st
@@ -24,7 +25,7 @@ typedef int (*sftp_cmd_cb)(Channel *c, const char *data, int dlen);
  */
 int is_sftp_pkt(const char *buf, int len)
 {
-    int tlen = len;
+    size_t tlen = (size_t)len;
     const char *data = buf;
     int offset = 0;
 
@@ -76,7 +77,7 @@ int is_sftp_pkt(const char *buf, int len)
 
 int is_sftp_version_type(const char *buf, int len)
 {
-    int tlen = len;
+    size_t tlen = (size_t)len;
     const char *data = buf;
     int offset = 0;
     int dlen = 0;
@@ -111,10 +112,10 @@ int is_sftp_version_type(const char *buf, int len)
 const char *sftp_head_info(const char *buf, int *plen, int *pdlen, uint8_t *ptype)
 {
     const char *data = buf;
-    int tlen = *plen;
+    size_t tlen = (size_t)*plen;
     int offset = 0;
     int dlen = 0;
-    int dlen_min = sizeof(uint32_t) + sizeof(uint8_t);
+    int dlen_min = (int)(sizeof(uint32_t) + sizeof(uint8_t));
 
     //debug_p("sftp_head_info: len=%d, sizeof(sftp_head_st)=%d", tlen, sizeof(sftp_head_st));
     if (tlen < sizeof(sftp_head_st)) {
@@ -161,14 +162,14 @@ const char *sftp_head_info(const char *buf, int *plen, int *pdlen, uint8_t *ptyp
 
 int sftp_open(Channel *c, const char *buf, int len)
 {
-    int tlen = len;
+    size_t tlen = (size_t)len;
     const char *data = buf;
     uint32_t fn_len = 0;
     char file_tmp[512] = {0};
     proxy_info_st *pinfo = &(c->proxy_info);
 
     if (tlen < sizeof(uint32_t)) {
-        error("need cache, sftp tlen[%d] < sizeof(uint32_t)", tlen);
+        error("need cache, sftp tlen[%zu] < sizeof(uint32_t)", tlen);
         return 0;
     }
 
@@ -177,7 +178,7 @@ int sftp_open(Channel *c, const char *buf, int len)
     tlen -= sizeof(uint32_t);
 
     if (tlen < fn_len) {
-        error("need cache, sftp tlen[%d] < fn_len[%d]", tlen, fn_len);
+        error("need cache, sftp tlen[%zu] < fn_len[%u]", tlen, fn_len);
         return 0;
     }
 
@@ -190,23 +191,24 @@ int sftp_open(Channel *c, const char *buf, int len)
 
     // 判断是否可以传输文件
 
-    cmd_log_send(c, file_tmp, strlen(file_tmp));
+    cmd_log_send(c, file_tmp, (int)strlen(file_tmp));
     return 0;
 }
 
 int sftp_open_dir(Channel *c, const char *buf, int len)
 {
-    if (sizeof(int) >= len) {
+    int sint = (int)sizeof(int);
+    if (sint >= len) {
         return 0;
     }
 
     int dir_len = PEEK_U32(buf);
-    if (dir_len + sizeof(int) != len) {
-        debug_p("dir len[%d] != buf len[%d]", dir_len, len - sizeof(int));
+    if (dir_len + sint != len) {
+        debug_p("dir len[%d] != buf len[%d]", dir_len, len - sint);
         return 0;
     }
-    buf += sizeof(int);
-    len -= sizeof(int);
+    buf += sint;
+    len -= sint;
 
     const char *dir = buf;
     debug_p("dir = %s", dir);
@@ -340,7 +342,6 @@ static int sftp_cache_init(sftp_cache_st *cache, const char *data, int dlen, int
 
 static const char *sftp_cache_merge(Channel *c, const char *buf, int *plen)
 {
-    int ret = 0;
     int nlen = 0;
     int len = *plen;
     sftp_cache_st *cache = &(c->sftp_cache);
@@ -385,7 +386,6 @@ int sftp_reqst_handle(Channel *c, const char *buf, int len)
     int tlen = len;
     int dlen = 0;
     int left = 0;
-    int ret = 0;
     uint8_t type = 0;
     sftp_cmd_cb cmd_cb = NULL;
 

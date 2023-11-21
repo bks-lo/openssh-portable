@@ -51,18 +51,21 @@ START_TEST(test_convert_encode_2_utf8)
     int ret = code_convert("UTF8", "GB2312", orig_buf, sizeof(orig_buf), out_buf_gb2312, sizeof(out_buf_gb2312));
     ck_assert_msg(ret != -1, "ret == -1");
 
-    // int convert_encode_2_utf8(CODE_TYPE from_type, char *inbuf, size_t inlen, char *outbuf, size_t outlen)
+    size_t outlen = 0;
     char out_buf[512] = {0};
-    ret = convert_encode_2_utf8(GB2312, out_buf_gb2312, strlen(out_buf_gb2312), out_buf, sizeof(out_buf));
+    outlen = sizeof(out_buf);
+    ret = convert_encode_2_utf8(GB2312, out_buf_gb2312, strlen(out_buf_gb2312), out_buf, &outlen);
     ck_assert_msg(ret != -1, "ret == -1");
     ck_assert_msg(strcmp(out_buf, orig_buf) == 0, "out_buf[%s] != orig_buf[%s]", out_buf, orig_buf);
 
     char out_buf_shift_jis[512] = {0};
-    ret = code_convert("GB2312", "SHIFT_JIS", out_buf_gb2312, strlen(out_buf_gb2312), out_buf_shift_jis, sizeof(out_buf_shift_jis));
+    outlen = sizeof(out_buf_shift_jis);
+    ret = code_convert("GB2312", "SHIFT_JIS", out_buf_gb2312, strlen(out_buf_gb2312), out_buf_shift_jis, &outlen);
     ck_assert_msg(ret != -1, "ret == -1");
 
     memset(out_buf, 0, sizeof(out_buf));
-    ret = convert_encode_2_utf8(SHIFT_JIS, out_buf_shift_jis, strlen(out_buf_shift_jis), out_buf, sizeof(out_buf));
+    outlen = sizeof(out_buf);
+    ret = convert_encode_2_utf8(SHIFT_JIS, out_buf_shift_jis, strlen(out_buf_shift_jis), out_buf, &outlen);
     ck_assert_msg(ret != -1, "ret == -1");
     ck_assert_msg(strcmp(out_buf, orig_buf) == 0, "out_buf[%s] != orig_buf[%s]", out_buf, orig_buf);
 }

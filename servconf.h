@@ -173,7 +173,9 @@ typedef struct {
 	char   **accept_env;
 	u_int num_setenv;
 	char   **setenv;
+#ifdef  PROXY_ENABLE
 	char   *pwd;
+#endif
 
 	int	max_startups_begin;
 	int	max_startups_rate;

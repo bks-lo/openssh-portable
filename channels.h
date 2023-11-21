@@ -38,7 +38,9 @@
 #ifndef CHANNEL_H
 #define CHANNEL_H
 
+#ifdef PROXY_ENABLE
 #include "cmd-define.h"
+#endif
 
 /* Definitions for channel types. */
 #define SSH_CHANNEL_X11_LISTENER	1	/* Listening for inet X11 conn. */
@@ -214,6 +216,7 @@ struct Channel {
 	/* Inactivity timeout deadline in seconds (0 = no timeout) */
 	int			inactive_deadline;
 
+#ifdef PROXY_ENABLE
 	int is_child;
 
 	/* 代理状态，未登录，登录成功，失败等 */
@@ -226,6 +229,7 @@ struct Channel {
 	sftp_cache_st sftp_cache;
 	/* 代理信息 */
 	proxy_info_st proxy_info;
+#endif
 };
 
 #define CHAN_EXTENDED_IGNORE		0
@@ -349,7 +353,11 @@ struct timespec;
 
 void	 channel_prepare_poll(struct ssh *, struct pollfd **,
 	    u_int *, u_int *, u_int, struct timespec *);
+#ifdef PROXY_ENABLE
 void	 channel_after_poll(struct ssh *, struct pollfd *, u_int, int);
+#else
+void	 channel_after_poll(struct ssh *, struct pollfd *, u_int);
+#endif
 void     channel_output_poll(struct ssh *);
 
 int      channel_not_very_much_buffered_data(struct ssh *);
