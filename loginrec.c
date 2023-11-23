@@ -387,14 +387,9 @@ login_init_entry(struct logininfo *li, pid_t pid, const char *username,
 		strlcpy(li->username, username, sizeof(li->username));
 		pw = getpwnam(li->username);
 		if (pw == NULL) {
-#ifdef PROXY_ENABLE
-            debug_p("%s: Cannot find user \"%s\", use fakepw!!!", __func__,
-			    li->username);
-            pw = fakepw();
-#else
 			fatal("%s: Cannot find user \"%s\"", __func__,
 			    li->username);
-#endif
+
 		}
 		li->uid = pw->pw_uid;
 	}

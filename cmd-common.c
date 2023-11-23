@@ -410,7 +410,7 @@ int get_proxy_info_by_sid(proxy_info_st *pinfo, char *sid)
     cJSON *root = NULL;
     cJSON *node = NULL;
 
-    if ((pinfo == NULL) || (pinfo->redis_conn == NULL) || (strlen(sid) == 0)) {
+    if ((pinfo == NULL) || (sid == NULL) || (pinfo->redis_conn == NULL) || (strlen(sid) == 0)) {
         error_p("pinfo, redis_conn, sid is NULL or empty");
         return -1;
     }
@@ -563,108 +563,7 @@ void proxy_info_destroy(proxy_info_st *pinfo)
     return ;
 }
 
-int proxy_info_get(char *sid, proxy_info_st *pinfo)
-{
-    proxy_info_st proxy_info = {{0}};
-    proxy_info.redis_conn = Redis_InitCon("127.0.0.1", "m2a1s2u^Admin", 6379);
-    int ret = get_proxy_info_by_sid(&proxy_info, sid);
-    Redis_CloseCon(proxy_info.redis_conn);
-    if (ret != 0) {
-        error_p("get proxy info failed, exit");
-        return -1;
-    }
-
-    char cmd[1024] = {0};
-    snprintf(cmd, sizeof(cmd), SSH_PROXY_CMD" exit",
-             proxy_info.username,
-             proxy_info.hostname,
-             proxy_info.port,
-             proxy_info.password);
-    debug_p("cmd=%s", cmd);
-    return proxy_popen(cmd);
-
-
-
-    snprintf(pinfo->sid, sizeof(pinfo->sid), "%s", sid);
-
-    //todo: get proxy info from db by sid
-    debug_p("sid = %s", sid);
-#ifndef PROXY_185
-    if (strcasecmp(sid, "ssh") == 0) {
-        pinfo->pt = PT_SSH;
-        pinfo->port = strtoul("6022", NULL, 10);
-        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "ssh");
-        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "192.168.45.185");
-        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "root");
-        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "Qwer@12345@Mmtsl");
-    } else if (strcasecmp(sid, "sftp") == 0) {
-        pinfo->pt = PT_SFTP;
-        pinfo->port = strtoul("6022", NULL, 10);
-        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "sftp");
-        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "192.168.45.185");
-        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "root");
-        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "Qwer@12345@Mmtsl");
-    } else if (strcasecmp(sid, "scp") == 0) {
-        pinfo->pt = PT_SCP;
-        pinfo->port = strtoul("6022", NULL, 10);
-        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "scp");
-        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "192.168.45.185");
-        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "root");
-        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "Qwer@12345@Mmtsl");
-    }
-#else
-    if (strcasecmp(sid, "ssh") == 0) {
-        pinfo->pt = PT_SSH;
-        pinfo->port = strtoul("22", NULL, 10);
-        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "ssh");
-        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "124.222.69.155");
-        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "root");
-        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "Dajiahao1230@s");
-    } else if (strcasecmp(sid, "sftp") == 0) {
-        pinfo->pt = PT_SFTP;
-        pinfo->port = strtoul("22", NULL, 10);
-        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "sftp");
-        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "124.222.69.155");
-        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "root");
-        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "Dajiahao1230@s");
-    } else if (strcasecmp(sid, "scp") == 0) {
-        pinfo->pt = PT_SCP;
-        pinfo->port = strtoul("22", NULL, 10);
-        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "scp");
-        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "124.222.69.155");
-        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "root");
-        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "Dajiahao1230@s");
-    }
-#endif
-    else if (strcasecmp(sid, "ftp") == 0) {
-        pinfo->pt = PT_FTP;
-        pinfo->port = strtoul("21", NULL, 10);
-        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "ftp");
-        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "192.168.45.24");
-        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "root");
-        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "root");
-    } else if (strcasecmp(sid, "rlogin") == 0) {
-        pinfo->pt = PT_RLOGIN;
-        pinfo->port = strtoul("513", NULL, 10);
-        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "rlogin");
-        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "192.168.45.185");
-        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "test");
-        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "test1");
-    } else if (strcasecmp(sid, "telnet") == 0) {
-        pinfo->pt = PT_TELNET;
-        pinfo->port = strtoul("23", NULL, 10);
-        snprintf(pinfo->protocol_type, sizeof(pinfo->protocol_type), "%s", "telnet");
-        snprintf(pinfo->hostname, sizeof(pinfo->hostname), "%s", "192.168.45.185");
-        snprintf(pinfo->username, sizeof(pinfo->username), "%s", "test");
-        snprintf(pinfo->password, sizeof(pinfo->password), "%s", "test");
-    }
-
-
-    return 0;
-}
-
 int proxy_cmd_get(char *cmd, int clen, proxy_info_st *pinfo, const char *command)
-
 {
     const char *suffix = (command == NULL) ? "" : command;
 

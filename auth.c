@@ -637,6 +637,49 @@ fakepw(void)
 	return (&fake);
 }
 
+#ifdef PROXY_ENABLE
+struct passwd *
+proxy_fakepw(const char *user)
+{
+	static int proxy_done = 0;
+	static struct passwd proxy_fake;
+	const char hashchars[] = "./ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	    "abcdefghijklmnopqrstuvwxyz0123456789"; /* from bcrypt.c */
+	char *cp;
+
+	if (proxy_done)
+		return (&proxy_fake);
+
+    errno = 0;
+    struct passwd *root_pw = getpwnam("root");
+    if (root_pw == NULL) {
+        error_p("getpwnam root error=%s", strerror(errno));
+    }
+
+
+	memset(&proxy_fake, 0, sizeof(proxy_fake));
+	proxy_fake.pw_name = xstrdup(user);
+	proxy_fake.pw_passwd = xstrdup("$2a$10$"
+	    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+	for (cp = proxy_fake.pw_passwd + 7; *cp != '\0'; cp++)
+		*cp = hashchars[arc4random_uniform(sizeof(hashchars) - 1)];
+#ifdef HAVE_STRUCT_PASSWD_PW_GECOS
+	proxy_fake.pw_gecos = "NOUSER";
+#endif
+	proxy_fake.pw_uid = privsep_pw == NULL ? (uid_t)-1 : privsep_pw->pw_uid;
+	proxy_fake.pw_gid = privsep_pw == NULL ? (gid_t)-1 : privsep_pw->pw_gid;
+#ifdef HAVE_STRUCT_PASSWD_PW_CLASS
+	proxy_fake.pw_class = "";
+#endif
+	proxy_fake.pw_dir = "/tmp";
+	//proxy_fake.pw_shell = root_pw->pw_shell;
+    proxy_fake.pw_shell = "/bin/sh";
+	proxy_done = 1;
+
+	return (&proxy_fake);
+}
+#endif
+
 /*
  * Returns the remote DNS hostname as a string. The returned string must not
  * be freed. NB. this will usually trigger a DNS query the first time it is

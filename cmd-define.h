@@ -162,7 +162,6 @@ typedef struct sftp_cache_st
 } sftp_cache_st;
 
 
-int proxy_info_get(char *sid, proxy_info_st *pinfo);
 
 int proxy_cmd_get(char *cmd, int clen, proxy_info_st *pinfo, const char *command);
 

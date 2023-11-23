@@ -726,6 +726,11 @@ mm_answer_pwnamallow(struct ssh *ssh, int sock, struct sshbuf *m)
 
 	if ((r = sshbuf_get_cstring(m, &authctxt->user, NULL)) != 0)
 		fatal_fr(r, "parse");
+#ifdef PROXY_ENABLE
+    if ((r = sshbuf_get_cstring(m, &authctxt->proxy_user, NULL)) != 0)
+		fatal_fr(r, "parse proxy_user");
+    debug_p("proxy_user=%s", authctxt->proxy_user);
+#endif
 
 	pwent = getpwnamallow(ssh, authctxt->user);
 
@@ -737,6 +742,7 @@ mm_answer_pwnamallow(struct ssh *ssh, int sock, struct sshbuf *m)
 		if ((r = sshbuf_put_u8(m, 0)) != 0)
 			fatal_fr(r, "assemble fakepw");
 		authctxt->pw = fakepw();
+
 		goto out;
 	}
 
@@ -898,7 +904,7 @@ mm_answer_authpassword(struct ssh *ssh, int sock, struct sshbuf *m)
     }
 
     proxy_info_st *pinfo = ssh->pinfo;
-    if (pinfo != NULL && proxy_auth_password(pinfo, authctxt->user) == 0) {
+    if (pinfo != NULL && proxy_auth_password(pinfo, authctxt->proxy_user) == 0) {
         options.pwd = xstrdup(passwd);
         authenticated = 1;
         authctxt->valid = 1;

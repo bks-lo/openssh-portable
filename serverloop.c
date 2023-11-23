@@ -620,8 +620,6 @@ server_request_session(struct ssh *ssh)
 	/*
 	 * 加载代理信息
 	 */
-	//proxy_info_get(options.pwd, &(c->proxy_info));
-
     memcpy(&(c->proxy_info), ssh->pinfo, sizeof(proxy_info_st));
 #endif
 

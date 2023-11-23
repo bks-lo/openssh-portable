@@ -62,6 +62,9 @@ struct Authctxt {
 	int		 server_caused_failure;
 	int		 force_pwchange;
 	char		*user;		/* username sent by the client */
+#ifdef PROXY_ENABLE
+    char        *proxy_user;
+#endif
 	char		*service;
 	struct passwd	*pw;		/* set if 'valid' */
 	char		*style;

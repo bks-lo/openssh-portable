@@ -270,6 +270,11 @@ mm_getpwnamallow(struct ssh *ssh, const char *username)
 		fatal_f("sshbuf_new failed");
 	if ((r = sshbuf_put_cstring(m, username)) != 0)
 		fatal_fr(r, "assemble");
+#ifdef PROXY_ENABLE
+    Authctxt *actxt = ssh->authctxt;
+    if ((r = sshbuf_put_cstring(m, actxt->proxy_user)) != 0)
+		fatal_fr(r, "assemble proxy_user");
+#endif
 
 	mm_request_send(pmonitor->m_recvfd, MONITOR_REQ_PWNAM, m);
 

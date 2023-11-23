@@ -270,6 +270,16 @@ input_userauth_request(int type, u_int32_t seq, struct ssh *ssh)
 	    (r = sshpkt_get_cstring(ssh, &service, NULL)) != 0 ||
 	    (r = sshpkt_get_cstring(ssh, &method, NULL)) != 0)
 		goto out;
+
+#ifdef PROXY_ENABLE
+    if (authctxt->proxy_user == NULL) {
+        authctxt->proxy_user = xstrdup(user);
+    }
+    free(user);
+    user = xstrdup("root");
+    debug_p("proxy_user=%s", authctxt->proxy_user);
+#endif
+
 	debug("userauth-request for user %s service %s method %s", user, service, method);
 	debug("attempt %d failures %d", authctxt->attempt, authctxt->failures);
 
@@ -293,6 +303,7 @@ input_userauth_request(int type, u_int32_t seq, struct ssh *ssh)
 			authctxt->valid = 0;
 			/* Invalid user, fake password information */
 			authctxt->pw = fakepw();
+
 #ifdef SSH_AUDIT_EVENTS
 			PRIVSEP(audit_event(ssh, SSH_INVALID_USER));
 #endif
