@@ -1,12 +1,9 @@
 #include <check.h>
 
-
-#define PROXY_DEBUG
-
 START_TEST(test_get_simple_file_content)
 {
     debug_p("===============================================get_login_rstr_by_proto"
-            "===============================================\n");
+            "===============================================");
     // int get_simple_file_content(const char *file, char ***line_arr, int *line_num)
     char **content_arr = NULL;
     int line_num = 0;
@@ -25,7 +22,7 @@ END_TEST
 START_TEST(test_get_login_rstr_by_proto)
 {
     debug_p("===============================================get_login_rstr_by_proto"
-            "===============================================\n");
+            "===============================================");
     // int get_simple_file_content(const char *file, char ***line_arr, int *line_num)
     char **content_arr = NULL;
     int line_num = 0;
@@ -44,14 +41,15 @@ END_TEST
 START_TEST(test_convert_encode_2_utf8)
 {
     debug_p("===============================================get_convert_encode_2_utf8"
-            "===============================================\n");
+            "===============================================");
+    size_t outlen = 0;
     char out_buf_gb2312[512] = {0};
     char orig_buf[] = {"哈哈"};
+    outlen = sizeof(out_buf_gb2312);
     // int code_convert(char *from_charset, char *to_charset, char *inbuf, size_t inlen, char *outbuf, size_t outlen)
-    int ret = code_convert("UTF8", "GB2312", orig_buf, sizeof(orig_buf), out_buf_gb2312, sizeof(out_buf_gb2312));
+    int ret = code_convert("UTF8", "GB2312", orig_buf, sizeof(orig_buf), out_buf_gb2312, &outlen);
     ck_assert_msg(ret != -1, "ret == -1");
 
-    size_t outlen = 0;
     char out_buf[512] = {0};
     outlen = sizeof(out_buf);
     ret = convert_encode_2_utf8(GB2312, out_buf_gb2312, strlen(out_buf_gb2312), out_buf, &outlen);
@@ -71,6 +69,39 @@ START_TEST(test_convert_encode_2_utf8)
 }
 END_TEST
 
+START_TEST(test_proxy_info)
+{
+    proxy_info_st *pinfo = proxy_info_init();
+    ck_assert_msg(pinfo != NULL, "pinfo == NULL");
+    ck_assert_msg(pinfo->redis_conn != NULL, "pinfo->redis_conn == NULL");
+    ck_assert_msg(pinfo->mysql_conn != NULL, "pinfo->mysql_conn == NULL");
+
+    int ret = Redis_Exec(pinfo->redis_conn, "set  connection_session::cmd-common-test-key  {\"protocol\":\"ssh\",\"hostname\":\"1.2.3.4\",\"password\":\"AAbbccDD%%d@s\",\"port\":\"22\",\"username\":\"root\",\"remote_ip\":\"192.168.68.1\",\"charset\":\"UTF-8\",\"sid\":\"cmd-common-test-key\",\"uid\":\"uid-cmd-common-test-key\"}");
+    ck_assert_msg(ret == 0, "ret != 0");
+
+    ret = get_proxy_info_by_sid(pinfo, "cmd-common-test-key");
+    ck_assert_msg(ret == 0, "ret != 0");
+
+    ck_assert_msg(strcmp(pinfo->sid, "cmd-common-test-key") == 0, "pinfo->sid[%s] invalid", pinfo->sid);
+    ck_assert_msg(strcmp(pinfo->hostname, "1.2.3.4") == 0, "pinfo->hostnam[%s] invalid", pinfo->hostname);
+    ck_assert_msg(strcmp(pinfo->password, "AAbbccDD%d@s") == 0, "pinfo->password[%s] invalid", pinfo->password);
+
+    ret = proxy_auth_password(pinfo, "cmd-common-test-key");
+    ck_assert_msg(ret == -1, "ret != -1");
+
+    ret = Redis_Exec(pinfo->redis_conn, "del  connection_session::cmd-common-test-key");
+    ck_assert_msg(ret == 0, "ret != 0");
+}
+END_TEST
+
+START_TEST(test_proxy_popen)
+{
+    int ret = proxy_popen("getconf ARG_MAX");
+    ck_assert_msg(ret == 0, "ret != 0");
+}
+END_TEST
+
+
 Suite *make_suite(void)
 {
 	Suite *s = suite_create("test");
@@ -79,6 +110,9 @@ Suite *make_suite(void)
 	tcase_add_test(tc, test_get_simple_file_content);
 	tcase_add_test(tc, test_get_login_rstr_by_proto);
     tcase_add_test(tc, test_convert_encode_2_utf8);
+    tcase_add_test(tc, test_proxy_info);
+    tcase_add_test(tc, test_proxy_popen);
+
 	suite_add_tcase(s, tc);
 	return s;
 }

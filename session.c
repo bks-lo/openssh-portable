@@ -1929,6 +1929,7 @@ session_window_change_req(struct ssh *ssh, Session *s)
 	    (r = sshpkt_get_u32(ssh, &s->ypixel)) != 0 ||
 	    (r = sshpkt_get_end(ssh)) != 0)
 		sshpkt_fatal(ssh, r, "%s: parse packet", __func__);
+
 	pty_change_window_size(s->ptyfd, s->row, s->col, s->xpixel, s->ypixel);
 	return 1;
 }

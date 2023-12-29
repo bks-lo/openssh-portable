@@ -1,6 +1,8 @@
 #ifndef _CMD_DEFINE_H
 #define _CMD_DEFINE_H
 
+#include <stdbool.h>
+#include <stddef.h>
 #include <hiredis/hiredis.h>
 #include "sshbuf.h"
 
@@ -160,8 +162,6 @@ typedef struct sftp_cache_st
     int offset;             // 当前已缓存的偏移
     int needlen;            // 需要下一个分包的长度 = tlen - offset
 } sftp_cache_st;
-
-
 
 int proxy_cmd_get(char *cmd, int clen, proxy_info_st *pinfo, const char *command);
 

@@ -603,24 +603,31 @@ uninstall:	uninstall-lr
 	-rm -f $(DESTDIR)$(mandir)/$(mansubdir)8/ssh-pkcs11-helper.8
 	-rm -f $(DESTDIR)$(mandir)/$(mansubdir)8/ssh-sk-helper.8
 
+unittests: tests/cmd-common-test tests/utf8-test tests/cmd-sftp-test tests/cmd-ssh-test
+	./tests/cmd-common-test
+	./tests/utf8-test
+	./tests/cmd-sftp-test
 
 unittests-clean:
 	rm -f tests/cmd-common-test
 	rm -f tests/utf8-test
 	rm -f tests/cmd-sftp-test
 
-tests/cmd-common-test: $(srcdir)/tests/cmd-common-test.c $(LIBSSH_C_FILE)	$(LIBCOMPAT) $(SSHD_C_FILE) Makefile.in
+tests/cmd-common-test: $(srcdir)/tests/cmd-common-test.c  $(SSHD_PROXY_C_FILE) $(LIBSSH_C_FILE) $(LIBCOMPAT) $(SSHD_C_FILE) Makefile.in
 	$(CC) -o $@ $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -DPROXY_ENABLE -DPROXY_DEBUG -DUNITTEST_ENABLE -DUNITTEST_CMD_COMMON \
-	 $(SSHD_C_FILE) $(LIBSSH_C_FILE) -lopenbsd-compat -lcheck $(SSHDLIBS) $(LIBS) $(GSSLIBS) $(K5LIBS) $(CHANNELLIBS)
+	 $(SSHD_PROXY_C_FILE) $(SSHD_C_FILE) $(LIBSSH_C_FILE) -lopenbsd-compat -lcheck $(SSHDLIBS) $(LIBS) $(GSSLIBS) $(K5LIBS) $(CHANNELLIBS)
 
 tests/utf8-test: $(srcdir)/tests/utf8-test.c $(LIBSSH_C_FILE)	$(LIBCOMPAT) $(SSHD_C_FILE) Makefile.in
 	$(CC) -o $@ $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -DPROXY_ENABLE -DPROXY_DEBUG -DUNITTEST_ENABLE -DUNITTEST_UTF8 \
-	 $(SSHD_C_FILE) $(LIBSSH_C_FILE) -lopenbsd-compat -lcheck $(SSHDLIBS) $(LIBS) $(GSSLIBS) $(K5LIBS) $(CHANNELLIBS)
+	 $(SSHD_PROXY_C_FILE) $(SSHD_C_FILE) $(LIBSSH_C_FILE) -lopenbsd-compat -lcheck $(SSHDLIBS) $(LIBS) $(GSSLIBS) $(K5LIBS) $(CHANNELLIBS)
 
-tests/cmd-sftp-test: $(srcdir)/tests/cmd-sftp-test.c $(LIBSSH_C_FILE)	$(LIBCOMPAT) $(SSHD_C_FILE) Makefile.in
+tests/cmd-sftp-test: $(srcdir)/tests/cmd-sftp-test.c $(LIBSSH_C_FILE) $(SSHD_PROXY_C_FILE) $(LIBCOMPAT) $(SSHD_C_FILE) Makefile.in
 	$(CC) -o $@ $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -DPROXY_ENABLE -DPROXY_DEBUG -DUNITTEST_ENABLE -DUNITTEST_CMD_SFTP \
-	 $(SSHD_C_FILE) $(LIBSSH_C_FILE) -lopenbsd-compat -lcheck $(SSHDLIBS) $(LIBS) $(GSSLIBS) $(K5LIBS) $(CHANNELLIBS)
+	 $(SSHD_PROXY_C_FILE) $(SSHD_C_FILE) $(LIBSSH_C_FILE) -lopenbsd-compat -lcheck $(SSHDLIBS) $(LIBS) $(GSSLIBS) $(K5LIBS) $(CHANNELLIBS)
 
+tests/cmd-ssh-test: $(srcdir)/tests/cmd-ssh-test.c $(LIBSSH_C_FILE) $(SSHD_PROXY_C_FILE) $(LIBCOMPAT) $(SSHD_C_FILE) Makefile.in
+	$(CC) -o $@ $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -DPROXY_ENABLE -DPROXY_DEBUG -DUNITTEST_ENABLE -DUNITTEST_CMD_SSH \
+	 $(SSHD_PROXY_C_FILE) $(SSHD_C_FILE) $(LIBSSH_C_FILE) -lopenbsd-compat -lcheck $(SSHDLIBS) $(LIBS) $(GSSLIBS) $(K5LIBS) $(CHANNELLIBS)
 
 
 regress-prep:

@@ -154,6 +154,7 @@ pty_change_window_size(int ptyfd, u_int row, u_int col,
 {
 	struct winsize w;
 
+    debug_p("col=%u, row=%u, xpixel=%u, ypixel=%u", col, row, xpixel, ypixel);
 	/* may truncate u_int -> u_short */
 	w.ws_row = row;
 	w.ws_col = col;
