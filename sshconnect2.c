@@ -436,6 +436,7 @@ ssh_userauth2(struct ssh *ssh, const char *local_user,
 {
 	Authctxt authctxt;
 	int r;
+    int status = 0;
 
 	if (options.preferred_authentications == NULL)
 		options.preferred_authentications = authmethods_get();
@@ -480,8 +481,15 @@ ssh_userauth2(struct ssh *ssh, const char *local_user,
 
 	ssh_dispatch_range(ssh, SSH2_MSG_USERAUTH_MIN, SSH2_MSG_USERAUTH_MAX, NULL);
 
-	if (!authctxt.success)
+	if (!authctxt.success) {
+        status = 255;
 		fatal("Authentication failed.");
+    }
+
+    if (options.test_pwd) {
+        cleanup_exit(status);
+    }
+
 	if (ssh_packet_connection_is_on_socket(ssh)) {
 		verbose("Authenticated to %s ([%s]:%d) using \"%s\".", host,
 		    ssh_remote_ipaddr(ssh), ssh_remote_port(ssh),

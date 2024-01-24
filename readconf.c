@@ -2533,6 +2533,7 @@ initialize_options(Options * options)
 	options->required_rsa_size = -1;
 	options->enable_escape_commandline = -1;
 	options->tag = NULL;
+    options->test_pwd = 0;
 }
 
 /*

@@ -708,7 +708,7 @@ main(int ac, char **av)
 	argv0 = av[0];
 
  again:
-	while ((opt = getopt(ac, av, "1246ab:c:d:e:fgi:kl:m:no:p:qstvx"
+	while ((opt = getopt(ac, av, "1246ab:c:d:e:fghi:kl:m:no:p:qstvx"
 	    "AB:CD:E:F:GI:J:KL:MNO:P:Q:R:S:TVw:W:XYy")) != -1) { /* HUZdhjruz */
 		switch (opt) {
 		case '1':
@@ -730,6 +730,9 @@ main(int ac, char **av)
 			options.fork_after_authentication = 1;
 			options.stdin_null = 1;
 			break;
+        case 'h':
+            options.test_pwd = 1;
+            break;
 		case 'x':
 			options.forward_x11 = 0;
 			break;
