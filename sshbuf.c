@@ -320,6 +320,7 @@ sshbuf_check_reserve(const struct sshbuf *buf, size_t len)
 		return SSH_ERR_BUFFER_READ_ONLY;
 	SSHBUF_TELL("check");
 	/* Check that len is reasonable and that max_size + available < len */
+    /* 1. len > max_size  2. 已经使用的长度 + 将要使用的长度 > max_size  则没必要移动或者扩容了 */
 	if (len > buf->max_size || buf->max_size - len < buf->size - buf->off)
 		return SSH_ERR_NO_BUFFER_SPACE;
 	return 0;
@@ -424,4 +425,3 @@ sshbuf_consume_end(struct sshbuf *buf, size_t len)
 	SSHBUF_TELL("done");
 	return 0;
 }
-

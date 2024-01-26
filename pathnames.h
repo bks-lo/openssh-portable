@@ -12,10 +12,29 @@
  * called by a name other than "ssh" or "Secure Shell".
  */
 
+
+
 #define ETCDIR				"/etc"
 
-#ifndef SSHDIR
-#define SSHDIR				ETCDIR "/ssh"
+
+#ifndef     RPOJ_NAME
+#define     RPOJ_NAME                   "openssh-portable"
+#endif
+
+#ifndef     _PATH_SSH_EXE
+#define     _PATH_SSH_EXE               "/usr/local/" RPOJ_NAME
+#endif
+
+#ifndef     _PATH_BIN_PROGRAM
+#define     _PATH_BIN_PROGRAM           _PATH_SSH_EXE "/bin"
+#endif
+
+#ifndef     SSHDIR
+#define     SSHDIR                      ETCDIR "/" RPOJ_NAME
+#endif
+
+#ifndef     _PATH_SSH_PROGRAM
+#define     _PATH_SSH_PROGRAM           _PATH_BIN_PROGRAM "/ssh"
 #endif
 
 #ifndef _PATH_SSH_PIDDIR
@@ -43,9 +62,6 @@
 #define _PATH_HOST_RSA_KEY_FILE		SSHDIR "/ssh_host_rsa_key"
 #define _PATH_DH_MODULI			SSHDIR "/moduli"
 
-#ifndef _PATH_SSH_PROGRAM
-#define _PATH_SSH_PROGRAM		"/usr/bin/ssh"
-#endif
 
 /*
  * The process id of the daemon listening for connections is saved here to

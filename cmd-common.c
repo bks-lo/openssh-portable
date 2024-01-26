@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <iconv.h>
+#include <ctype.h>
 #include "cJSON.h"
 #include "includes.h"
 #include "openbsd-compat/sys-queue.h"
@@ -14,6 +15,7 @@
 #include "db_utils.h"
 #include "proxy.h"
 #include "xmalloc.h"
+#include "pathnames.h"
 
 
 typedef struct protocol_info_st
@@ -162,9 +164,49 @@ int get_login_rstr_by_proto(const char *protocol_type, int is_fail, char ***lrst
 
     /* example: /etc/ssh/login_result_ssh.ok    /etc/ssh/login_result_rlogin.fail */
     snprintf(lrfile, sizeof(lrfile), "%s/login_result_%s.%s",
-             SSH_ETC_DIR, protocol_type, (is_fail ? "fail" : "ok"));
+             SSHDIR, protocol_type, (is_fail ? "fail" : "ok"));
 
     return get_simple_file_content(lrfile, lrstr_arr, lrsize);
+}
+
+/**
+ * \brief 找到最后字符串最后一个合法的单词  (必须以字母开头)
+ *
+ * \param [in|out] buf
+ * \param [in|out] len
+ * \param [in|out] min_len      单词的最小长度，当单词长度>=min_len时，才被认为合法
+ * \return const char*
+ */
+static const char *find_last_word(const char *buf, int len, int min_len)
+{
+    int i = len -1;
+    int last_i = len;
+    int wlen = 0;
+    const char *ret = NULL;
+    min_len = min_len > 0 ? min_len : 1;    /* 最小长度为 1 */
+
+    for(; i >= 0; --i) {
+        if (i == 0 && buf[i] != ' ') {
+            wlen = last_i - i;
+            ret = buf + i;
+        } else if (buf[i] == ' ') {
+            wlen = last_i - i -1;
+            ret = buf + i + 1;
+        } else {
+            continue;
+        }
+
+        last_i = i;
+        if (wlen < min_len) {
+            continue;
+        }
+
+        if (isalpha(*ret)) {
+            return ret;
+        }
+    }
+
+    return NULL;
 }
 
 int login_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
@@ -207,6 +249,8 @@ int login_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 
     return 0;
 #endif
+
+#if 0
     int i = 0;
     int ret = 0;
     int lrok_num = 0;
@@ -228,24 +272,76 @@ int login_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         return -1;
     }
 
-    result = strip_whitespace_head(buf);
-    for (i = 0; i < lrfail_num; ++i) {
-        if (strncasecmp(result, lrfail_arr[i], strlen(lrfail_arr[i])) == 0) {
-            c->proxy_state = PROXY_STATE_LOGIN_FAILED;
-            debug_p("login failed");
-            break;
+    int loop = 0;
+    int is_new_line = 1;            /* When there are multiple lines, match the first word of each line. */
+    for (; loop < len; ++loop) {
+        if (buf[loop] == 0x0d || buf[loop] == 0x0a) {
+            is_new_line = 1;
+            continue;
         }
-    }
 
-    for (i = 0; i < lrok_num; ++i) {
-        if (strncasecmp(result, lrok_arr[i], strlen(lrok_arr[i])) == 0) {
-            c->proxy_state = PROXY_STATE_LOGIN_OK;
-            debug_p("login success 1");
-            break;
+        if (!is_new_line)
+            continue;
+
+        is_new_line = 0;
+        for (i = 0; i < lrfail_num; ++i) {
+            if (strncasecmp(buf + loop, lrfail_arr[i], strlen(lrfail_arr[i])) == 0) {
+                c->proxy_state = PROXY_STATE_LOGIN_FAILED;
+                debug_p("login failed");
+                break;
+            }
+        }
+
+        for (i = 0; i < lrok_num; ++i) {
+            if (strncasecmp(buf + loop, lrok_arr[i], strlen(lrok_arr[i])) == 0) {
+                c->proxy_state = PROXY_STATE_LOGIN_OK;
+                debug_p("login success 1");
+                break;
+            }
         }
     }
 
     return 0;
+#endif
+
+#if 0
+    proxy_info_st *pinfo = ssh->pinfo;
+    /* 输入密码 */
+    char *tmp = xstrdup(buf);
+    char *w = NULL;
+    while ((w = strrchr(tmp, ' ')) != NULL) {
+        if (w[1] >= 'A' && w[1] <= 'Z' || w[1] >= 'a' && w[1] <= 'z') {
+            if (strncasecmp(w + 1, "password", sizeof("password") - 1) == 0) {
+                write(c->wfd, pinfo->password, strlen(pinfo->password));
+                write(c->wfd, "\r", 1);
+                free(tmp);
+                return 0;
+            }
+        }
+        w[0] = '\0';
+    }
+
+    if (strncasecmp(buf, "password", sizeof("password") - 1) == 0) {
+        write(c->wfd, pinfo->password, strlen(pinfo->password));
+        write(c->wfd, "\r", 1);
+        return 0;
+    }
+#endif
+
+    const char *s_pwd = NULL;
+    s_pwd = find_last_word(buf, len, 0);
+    if (s_pwd == NULL) {
+        return 0;
+    }
+
+    proxy_info_st *pinfo = &(c->proxy_info);
+    if (strncasecmp(s_pwd, "password", sizeof("password") - 1) == 0) {
+        write(c->wfd, pinfo->password, strlen(pinfo->password));
+        write(c->wfd, "\n", 1);
+        c->proxy_state = PROXY_STATE_LOGIN_OK;
+        return 0;
+    }
+
 }
 
 /**
@@ -515,6 +611,7 @@ int proxy_popen(const char *command)
     }
 
     debug_p("failed");
+    fprintf(stderr, "%s", retstr);
     return -1;
 }
 
@@ -534,7 +631,7 @@ int proxy_auth_password(proxy_info_st *pinfo, char *sid)
     }
 
     char cmd[1024] = {0};
-    snprintf(cmd, sizeof(cmd), SSH_PROXY_CMD" exit",
+    snprintf(cmd, sizeof(cmd), SSH_PROXY_CMD" -h 2>&1",
              pinfo->username,
              pinfo->hostname,
              pinfo->port,
@@ -569,13 +666,13 @@ int proxy_cmd_get(char *cmd, int clen, proxy_info_st *pinfo, const char *command
 
     switch (pinfo->pt) {
     case PT_SSH:
-        snprintf(cmd, clen, SSH_PROXY_CMD" %s", pinfo->username, pinfo->hostname, pinfo->port, pinfo->password, suffix);
+        snprintf(cmd, clen, SSH_NOPWD_PROXY_CMD" %s", pinfo->username, pinfo->hostname, pinfo->port, suffix);
         break;
     case PT_SFTP:
-        snprintf(cmd, clen, SSH_PROXY_CMD" -s sftp", pinfo->username, pinfo->hostname, pinfo->port, pinfo->password);
+        snprintf(cmd, clen, SSH_NOPWD_PROXY_CMD" -s sftp", pinfo->username, pinfo->hostname, pinfo->port);
         break;
     case PT_SCP:
-        snprintf(cmd, clen, SSH_PROXY_CMD" %s", pinfo->username, pinfo->hostname, pinfo->port, pinfo->password, suffix);
+        snprintf(cmd, clen, SSH_NOPWD_PROXY_CMD" %s", pinfo->username, pinfo->hostname, pinfo->port, suffix);
         break;
     case PT_FTP:
         //snprintf(cmd, clen, "/home/xiaoke/netkit-ftp/ftp/ftp -H 192.168.45.24 -u root -s %s", pinfo->password);

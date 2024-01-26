@@ -344,6 +344,16 @@ int sshbuf_read(int, struct sshbuf *, size_t, size_t *)
 		((u_char *)(p))[1] = __v & 0xff; \
 	} while (0)
 
+/**
+ * \brief 在buf中的offset位置开始，向后滑动len长度的位置
+ */
+int sshbuf_slide(struct sshbuf *buf, size_t offset, size_t len);
+
+/**
+ * \brief 在buf中的offset位置开始，删除后面len长度的数据
+ */
+int sshbuf_delete(struct sshbuf *buf, size_t offset, size_t len);
+
 /* Internal definitions follow. Exposed for regress tests */
 #ifdef SSHBUF_INTERNAL
 

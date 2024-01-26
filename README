@@ -59,28 +59,28 @@ References -
 		wget https://www.openssl.org/source/openssl-1.1.1u.tar.gz
 		tar -xf openssl-1.1.1m.tar.gz
 		cd openssl-1.1.1m
-		
+
 		# 配置
 		./config --prefix=/usr/local/openssl shared
 		# 编译
 		make
 		# 安装
-		make install 
-		
+		make install
+
 	2. zlib
 		wget https://www.zlib.net/current/zlib.tar.gz
 		# 解压
 		tar -xf zlib-1.2.11.tar.gz
 		# 进入源码目录
 		cd zlib-1.2.11
-		
+
 		# 预编译
 		./configure --prefix=/usr/local/zlib
 		# 编译
 		make
 		# 安装
 		make install
-		
+
 		sudo apt -y install libz-dev
 
 	3. openssh
@@ -88,14 +88,15 @@ References -
 		tar -xf openssh-9.3p2
 		cd openssh-9.3p2
 
+		cd /home/xiaoke/openssh-portable
 		autoreconf
-		/* 关闭优化 */
-		./configure CFLAGS='-g -O0' CXXFLAGS='-g -O0'  --prefix=/usr/local/openssh --sysconfdir=/etc/ssh  --with-ssl-dir=/usr/local/openssl --with-zlib-dir=/usr/local/zlib --without-openssl-header-check
-		/* 默认优化 */
-		./configure --prefix=/usr/local/openssh --sysconfdir=/etc/ssh  --with-ssl-dir=/usr/local/openssl --with-zlib-dir=/usr/local/zlib --without-openssl-header-check
-		make clean;make
-		make tests
-		
+		./configure CFLAGS='-g -O0' CXXFLAGS='-g -O0'  --prefix=/usr/local/openssh-portable --sysconfdir=/etc/openssh-portable --with-ssl-dir=/home/xiaoke/common/openssl --with-zlib-dir=/home/xiaoke/common/zlib --without-openssl-header-check
+		make clean;make -j8
+		make uninstallall
+		make install
+
+		make host-key-force		//重新生成 rsa dsa 等主机密钥
+
 		编译错误
 			vim /etc/group
 				sshd::103:
@@ -105,16 +106,15 @@ References -
 	4. 运行
 		/home/xiaoke/openssh-portable/sshd -f /home/xiaoke/openssh-portable/sshd_config -E /tmp/xksshd.log
 		/home/xiaoke/openssh-portable/sshd -f /home/xiaoke/openssh-portable/sshd_config -D -ddd
-		
-		
+
+
 		/home/xiaoke/openssh-portable/ssh root@192.168.68.135 -vvv -o PreferredAuthentications=password -d m2a1s2u3000 "ls"
 		/home/xiaoke/openssh-portable/ssh root@192.168.68.135 -vvv -o PreferredAuthentications=publickey,keyboard-interactive,password -d m2a1s2u3000 "ls"
 		PreferredAuthentications=publickey,keyboard-interactive,password
-		
-		/home/xiaoke/openssh-portable/ssh root@192.168.45.185 -vvv -p 6022 -o PreferredAuthentications=password -d Abmin@1234@Mmtsl
-		
-		
-		/home/xiaoke/netkit-ftp/ftp/ftp -H 192.168.45.24 -P 25 -u root -s root
-		
-		ssh -p 6022 root@sbrics
 
+		/home/xiaoke/openssh-portable/ssh root@192.168.45.185 -vvv -p 6022 -o PreferredAuthentications=password -d Abmin@1234@Mmtsl
+
+
+		/home/xiaoke/netkit-ftp/ftp/ftp -H 192.168.45.24 -P 25 -u root -s root
+
+		ssh -p 6022 root@sbrics

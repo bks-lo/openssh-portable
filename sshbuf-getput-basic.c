@@ -631,3 +631,73 @@ sshbuf_get_bignum2_bytes_direct(struct sshbuf *buf,
 	}
 	return 0;
 }
+
+/**
+ * \brief 在buf中的offset位置开始，向后滑动len长度的位置
+ *
+ * \param [in|out] buf
+ * \param [in] offset
+ * \param [in] len
+ * \return int
+ */
+int
+sshbuf_slide(struct sshbuf *buf, size_t offset, size_t len)
+{
+    u_char *p1 = NULL;
+    u_char *p2 = NULL;
+	int r;
+
+    /* 检测offset是否合法 */
+	if ((r = check_offset(buf, 1, offset, 0)) != 0)
+		return r;
+
+    /* 检测需要滑动的数据总长度 */
+    size_t slen = sshbuf_len(buf);
+    slen -= offset;
+
+    /* 扩容当前空间 */
+    if ((r = sshbuf_reserve(buf, len, NULL)) < 0)
+		return r;
+
+    /* 计算滑动前后的数据起始位置 */
+    p1 = sshbuf_mutable_ptr(buf) + offset;
+    p2 = p1 + len;
+
+    memmove(p2, p1, slen);
+    memset(p1, ' ', len);
+    return 0;
+}
+
+
+/**
+ * \brief 在buf中的offset位置开始，删除后面len长度的数据
+ *
+ * \param [in|out] buf
+ * \param [in] offset
+ * \param [in] len
+ * \return int
+ */
+int
+sshbuf_delete(struct sshbuf *buf, size_t offset, size_t len)
+{
+    u_char *p1 = NULL;
+    u_char *p2 = NULL;
+	int r;
+
+    /* 检测offset 和 len 是否合法 */
+    size_t slen = sshbuf_len(buf);
+    if (slen > offset + len) {
+        return SSH_ERR_NO_BUFFER_SPACE;
+    }
+
+    /* 检测需要滑动的数据总长度 */
+    slen = slen - offset - len;
+
+    /* 计算滑动前后的数据起始位置 */
+    p1 = sshbuf_mutable_ptr(buf) + offset;
+    p2 = p1 + len;
+
+    memmove(p1, p2, slen);
+    memset(p1 + slen, ' ', len);
+    return 0;
+}

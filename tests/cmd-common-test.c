@@ -101,6 +101,62 @@ START_TEST(test_proxy_popen)
 }
 END_TEST
 
+START_TEST(test_find_last_word)
+{
+#define STR_LEN(s)  s, sizeof(s) - 1
+    const char *ret = NULL;
+    int i = 0;
+
+    ++i;
+    ret = find_last_word(STR_LEN("hahah"), 0);
+    ck_assert_msg(strncmp(ret, STR_LEN("hahah")) == 0, "[%d] != hahah", i);
+
+    ++i;
+    ret = find_last_word(STR_LEN("hahah "), 0);
+    ck_assert_msg(strncmp(ret, STR_LEN("hahah")) == 0, "[%d] != hahah", i);
+
+    ++i;
+    ret = find_last_word(STR_LEN(" hahah"), 0);
+    ck_assert_msg(strncmp(ret, STR_LEN("hahah")) == 0, "[%d] != hahah", i);
+
+    ++i;
+    ret = find_last_word(STR_LEN(" hahah "), 0);
+    ck_assert_msg(strncmp(ret, STR_LEN("hahah")) == 0, "[%d] != hahah", i);
+
+    ++i;
+    ret = find_last_word(STR_LEN(" hahah :"), 0);
+    ck_assert_msg(strncmp(ret, STR_LEN("hahah")) == 0, "[%d] != hahah", i);
+
+    ++i;
+    ret = find_last_word(STR_LEN("hahah :"), 0);
+    ck_assert_msg(strncmp(ret, STR_LEN("hahah")) == 0, "[%d] != hahah", i);
+
+    ++i;
+    ret = find_last_word(STR_LEN("hahah >"), 0);
+    ck_assert_msg(strncmp(ret, STR_LEN("hahah")) == 0, "[%d] != hahah", i);
+
+    ++i;
+    ret = find_last_word(STR_LEN(" hahah ha >"), 3);
+    ck_assert_msg(strncmp(ret, STR_LEN("hahah")) == 0, "[%d] != hahah", i);
+
+    ++i;
+    ret = find_last_word(STR_LEN(" hahah ha>"), 3);
+    ck_assert_msg(strncmp(ret, STR_LEN("hahah")) != 0, "[%d] != hahah", i);
+
+    ++i;
+    ret = find_last_word(STR_LEN(" hahah ha >"), 0);
+    ck_assert_msg(strncmp(ret, STR_LEN("hahah")) != 0, "[%d] != hahah", i);
+
+    ++i;
+    ret = find_last_word(STR_LEN(" hahah: "), 0);
+    ck_assert_msg(strncmp(ret, STR_LEN("hahah:")) == 0, "[%d] != hahah", i);
+
+    ++i;
+    ret = find_last_word("abcd efgh ijkl", 10, 0);
+    ck_assert_msg(strncmp(ret, STR_LEN("efgh")) == 0, "[%d] != efgh", i);
+}
+END_TEST
+
 
 Suite *make_suite(void)
 {
@@ -112,6 +168,7 @@ Suite *make_suite(void)
     tcase_add_test(tc, test_convert_encode_2_utf8);
     tcase_add_test(tc, test_proxy_info);
     tcase_add_test(tc, test_proxy_popen);
+    tcase_add_test(tc, test_find_last_word);
 
 	suite_add_tcase(s, tc);
 	return s;

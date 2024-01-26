@@ -471,9 +471,9 @@ distprep: catman-do depend-check
 	$(AUTORECONF)
 	-rm -rf autom4te.cache .depend.bak
 
-install: $(CONFIGFILES) $(MANPAGES) $(TARGETS) install-files install-sysconf host-key check-config install-lr
-install-nokeys: $(CONFIGFILES) $(MANPAGES) $(TARGETS) install-files install-sysconf install-lr
-install-nosysconf: $(CONFIGFILES) $(MANPAGES) $(TARGETS) install-files install-lr
+install: $(CONFIGFILES) $(MANPAGES) $(TARGETS) install-files install-sysconf host-key check-config install-proxy-conf
+install-nokeys: $(CONFIGFILES) $(MANPAGES) $(TARGETS) install-files install-sysconf install-proxy-conf
+install-nosysconf: $(CONFIGFILES) $(MANPAGES) $(TARGETS) install-files install-proxy-conf
 
 check-config:
 	-$(DESTDIR)$(sbindir)/sshd -t -f $(DESTDIR)$(sysconfdir)/sshd_config
@@ -553,14 +553,14 @@ host-key-force: ssh-keygen$(EXEEXT) ssh$(EXEEXT)
 		./ssh-keygen -t ecdsa -f $(DESTDIR)$(sysconfdir)/ssh_host_ecdsa_key -N ""; \
 	fi
 
-install-lr:
-	$(MKDIR_P) /etc/ssh
-	$(INSTALL) -m 644 etc/login_result_ssh.ok /etc/ssh/login_result_ssh.ok
-	$(INSTALL) -m 644 etc/login_result_ssh.fail /etc/ssh/login_result_ssh.fail
+install-proxy-conf:
+	$(MKDIR_P) $(DESTDIR)$(sysconfdir)
+	$(INSTALL) -m 644 etc/login_result_ssh.ok   $(DESTDIR)$(sysconfdir)/login_result_ssh.ok
+	$(INSTALL) -m 644 etc/login_result_ssh.fail $(DESTDIR)$(sysconfdir)/login_result_ssh.fail
 
 uninstall-lr:
-	-rm -f /etc/ssh/login_result_ssh.ok
-	-rm -f /etc/ssh/login_result_ssh.fail
+	-rm -f $(DESTDIR)$(sysconfdir)/login_result_ssh.ok
+	-rm -f $(DESTDIR)$(sysconfdir)/login_result_ssh.fail
 
 
 uninstallall:	uninstall

@@ -10,6 +10,12 @@
 #include "cmd-common.h"
 #include "xmalloc.h"
 
+#define VC_MAXCOL (32767)
+#define VC_MAXROW (32767)
+#define VC_MALLOC_SIZE_MAX  (1 << 22)
+
+static struct vc_data *vc = NULL;
+
 static struct uni_pagedict *dflt;
 
 /* 取unicode 编码的最高5位 idx[15 ~ 11]*/
@@ -104,10 +110,134 @@ unsigned short dfont_unitable[303] =
 	0x00b7, 0x221a, 0x207f, 0x00b2, 0x25a0, 0xfffd, 0x00a0
 };
 
+static int do_con_write(struct vc_data *vc, const unsigned char *buf, int count);
+int vc_do_resize(struct vc_data *vc, unsigned int cols, unsigned int lines);
+static void vc_data_init(struct vc_data *vc);
+
+
+static struct vc_data *vc_data_creat()
+{
+    struct vc_data *vc = xcalloc(1, sizeof(struct vc_data));
+    return vc;
+}
+
+static int long_to_char(long lc, char *buf, int len)
+{
+    size_t i = 0;
+    size_t j = 0;
+    size_t ls = sizeof(lc);
+    char *slc = (char *)&lc;
+    for (; i < ls && j < len; ++i) {
+        if (slc[i] == 0) {
+            continue;
+        }
+
+        buf[j++] = slc[i];
+    }
+    return j;
+}
+
+static int longs_to_string(long *ls, int ls_len, char *out, int out_len)
+{
+    int i = 0;
+    int j = 0;
+    for (; i < ls_len; ++i) {
+        j += long_to_char(ls[i], out + j, out_len - j);
+        if (j >= out_len) {
+            return -1;
+        }
+    }
+    out[j] = 0;
+
+    return 0;
+}
+
+static int longs_to_sshbuf(long *ls, int ls_len, struct sshbuf *sbuf)
+{
+    int i = 0;
+    int j = 0;
+    char tb[sizeof(long)] = {0};
+    for (; i < ls_len; ++i) {
+        j = long_to_char(ls[i], tb, sizeof(long));
+        if (j > 0) {
+            sshbuf_put(sbuf, tb, j);
+        }
+    }
+
+    char nul = 0;
+    sshbuf_put(sbuf, &nul, 1);
+
+    return 0;
+}
+
+static int uint_to_char(unsigned int uic, char *buf, int len)
+{
+    size_t i = 0;
+    size_t j = 0;
+    size_t ls = sizeof(uic);
+    char *slc = (char *)&uic;
+    for (; i < ls && j < len; ++i) {
+        if (slc[i] == 0) {
+            continue;
+        }
+
+        buf[j++] = slc[i];
+    }
+    return j;
+}
+
+static int uints_to_sshbuf(unsigned int *ls, int ls_len, struct sshbuf *sbuf)
+{
+    int i = 0;
+    int j = 0;
+    char tb[sizeof(unsigned int)] = {0};
+    for (; i < ls_len; ++i) {
+        j = uint_to_char(ls[i], tb, sizeof(tb));
+        if (j > 0) {
+            sshbuf_put(sbuf, tb, j);
+        }
+    }
+
+    // char nul = 0;
+    // sshbuf_put(sbuf, &nul, 1);
+
+    return 0;
+}
+
+static int print_uni_line(struct vc_data *vc)
+{
+    unsigned int x = vc->state.x;
+    unsigned int y = vc->state.y;
+    if (x == 0) {
+        return ;
+    }
+
+    struct sshbuf *pbuf = sshbuf_new();
+    debug_p("y=%d, x == %d", y, x);
+    uints_to_sshbuf(vc->vc_uni_lines[y], x, pbuf);
+    //sshbuf_consume(pbuf, sshbuf_len(vc->prompt));
+    debug_p("[%d]>>%s", sshbuf_len(pbuf), sshbuf_ptr(pbuf));
+    sshbuf_free(pbuf);
+}
+
+
 static int login_ok_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 {
+    if (vc == NULL) {
+        vc = vc_data_creat();
+        if (vc_do_resize(vc, 120, 100) != 0) {
+            debug_p("vc_do_resize failed");
+            return -1;
+        }
+        vc_data_init(vc);
+    }
+
+    do_con_write(vc, buf, len);
+
+    sshbuf_reset(vc->prompt);
+    uints_to_sshbuf(vc->vc_uni_lines[vc->state.y], vc->state.x, vc->prompt);
+    debug_p("prompt [%u]>>%s", sshbuf_len(vc->prompt), sshbuf_ptr(vc->prompt));
     //snprintf(c->prompt, sizeof(c->prompt), "%s", buf);
-    c->proxy_state = PROXY_STATE_CMD;
     return 0;
 }
 
@@ -365,28 +495,36 @@ static void vc_uniscr_putc(struct vc_data *vc, unsigned int uc)
 {
 	if (vc->vc_uni_lines)
 		vc->vc_uni_lines[vc->state.y][vc->state.x] = uc;
+
+    sshbuf_put(vc->buf, &uc, sizeof(uc));
+    //sshbuf_poke(vc->buf, vc->state.x, &uc, sizeof(uc));
 }
 
 static void vc_uniscr_insert(struct vc_data *vc, unsigned int nr)
 {
+    unsigned int x = vc->state.x, cols = vc->vc_cols;
+
 	if (vc->vc_uni_lines) {
 		unsigned int *ln = vc->vc_uni_lines[vc->state.y];
-		unsigned int x = vc->state.x, cols = vc->vc_cols;
-
-		memmove(&ln[x + nr], &ln[x], (cols - x - nr) * sizeof(*ln));
+        unsigned int len = (cols - x - nr) * sizeof(*ln);
+		memmove(&ln[x + nr], &ln[x], len);
 		memset(&ln[x], ' ', nr);
 	}
+
+    sshbuf_slide(vc->buf, x * sizeof(x), nr * sizeof(nr));
 }
 
 static void vc_uniscr_delete(struct vc_data *vc, unsigned int nr)
 {
+    unsigned int x = vc->state.x, cols = vc->vc_cols;
+
 	if (vc->vc_uni_lines) {
 		unsigned int *ln = vc->vc_uni_lines[vc->state.y];
-		unsigned int x = vc->state.x, cols = vc->vc_cols;
-
 		memcpy(&ln[x], &ln[x + nr], (cols - x - nr) * sizeof(*ln));
 		memset(&ln[cols - nr], ' ', nr);
 	}
+
+    sshbuf_delete(vc->buf, x * sizeof(x), nr * sizeof(nr));
 }
 
 static void vc_uniscr_clear_line(struct vc_data *vc, unsigned int x, unsigned int nr)
@@ -402,9 +540,6 @@ static void vc_uniscr_clear_lines(struct vc_data *vc, unsigned int y, unsigned i
 			memset(vc->vc_uni_lines[y++], ' ', vc->vc_cols);
 }
 
-#define VC_MAXCOL (32767)
-#define VC_MAXROW (32767)
-#define VC_MALLOC_SIZE_MAX  (1 << 22)
 int vc_do_resize(struct vc_data *vc, unsigned int cols, unsigned int lines)
 {
     unsigned int new_cols, new_rows, new_row_size, new_screen_size;
@@ -960,6 +1095,10 @@ static inline void bs(struct vc_data *vc)
 
 static inline void cr(struct vc_data *vc)
 {
+#if 1
+    debug_p("y=%u,x=%u", vc->state.y, vc->state.x);
+    print_uni_line(vc);
+#endif
 	vc->vc_pos -= vc->state.x << 1;
 	vc->vc_need_wrap = vc->state.x = 0;
 }
@@ -1134,6 +1273,8 @@ static void set_mode(struct vc_data *vc, int on_off)
 				break;
 			case 3:	/* 80/132 mode switch unimplemented */
 				break;
+            case 2: /* DECANM: VT52 mode */
+                break;
 			case 5:			/* Inverted screen on/off */
 				if (vc->vc_decscnm != on_off) {
 					vc->vc_decscnm = on_off;
@@ -1166,9 +1307,28 @@ static void set_mode(struct vc_data *vc, int on_off)
 			case 25:		/* Cursor on/off */
 				vc->vc_deccm = on_off;
 				break;
+            case 47:                     /* alternate screen */
+                break;
 			case 1000:
 				vc->vc_report_mouse = on_off ? 2 : 0;
 				break;
+            case 1002:                   /* xterm mouse 2 (inc. button drags) */
+                break;
+            case 1003:                   /* xterm mouse any-event tracking */
+                break;
+            case 1006:                   /* xterm extended mouse */
+                break;
+            case 1015:                   /* urxvt extended mouse */
+                break;
+            case 1047:                   /* alternate screen */
+                break;
+            case 1048:                   /* save/restore cursor */
+                break;
+            case 1049:                   /* cursor & alternate screen */
+                break;
+            case 2004:                   /* xterm bracketed paste */
+                vc->bracketed_paste = on_off;
+                break;
 			}
 		} else {
 			switch(vc->vc_par[i]) {	/* ANSI modes set/reset */
@@ -1178,6 +1338,8 @@ static void set_mode(struct vc_data *vc, int on_off)
 			case 4:			/* Insert Mode on/off */
 				vc->vc_decim = on_off;
 				break;
+            case 12:                     /* SRM: set echo mode */
+                break;
 			case 20:		/* Lf, Enter == CrLf/Lf */
                 /*
 				if (on_off)
@@ -1186,6 +1348,8 @@ static void set_mode(struct vc_data *vc, int on_off)
 					clr_kbd(vc, lnm);
                 */
 				break;
+            case 34:                     /* WYULCURM: Make cursor BIG */
+                break;
 			}
 		}
 }
@@ -1360,10 +1524,11 @@ static void do_con_trol(struct vc_data *vc, int c)
 		debug_p("tab key");
 		return;
 	case 10: case 11: case 12:
-		debug_p("\\n, and fallthrough");
+        lf(vc);
+		// debug_p("\\n, and fallthrough");
 		// fallthrough;
 	case 13:
-        debug_p("\\r");
+        // debug_p("\\r");
 		cr(vc);
 		return;
 	case 14:
@@ -1776,20 +1941,32 @@ rescan_last_byte:
             goto rescan_last_byte;
     }
 
+
+#if 0
     int i = 0;
     for (; i < vc->state.x; ++i) {
         debug_p("vc_uni_lines=%c", (char)(vc->vc_uni_lines[vc->state.y][i]));
     }
     debug_p("len = %u\n", vc->state.x);
+#elif 0
+    int i = 0;
+    int tlen = sshbuf_len(vc->buf);
+    tlen = tlen >> 2;
+    char *vbuf = sshbuf_ptr(vc->buf);
+    uint32_t *uibuf = (uint32_t *)vbuf;
+    for (; i < tlen; ++i) {
+        debug_p("vc_uni_lines=%c", (char)(uibuf[i]));
+    }
+    debug_p("len = %u\n", tlen);
+#elif 1
+    print_uni_line(vc);
+#endif
+
 
     return n;
 }
 
-static struct vc_data *vc_data_creat()
-{
-    struct vc_data *vc = xcalloc(1, sizeof(struct vc_data));
-    return vc;
-}
+
 
 /* console_lock is held (except via vc_init()) */
 static void reset_terminal(struct vc_data *vc)
@@ -1894,6 +2071,8 @@ static void vc_data_init(struct vc_data *vc)
 	vc->vt_newvt = -1;
 
     reset_terminal(vc);
+    vc->buf = sshbuf_new();
+    vc->prompt = sshbuf_new();
 }
 
 static int con_allocate_new(struct vc_data *vc)
@@ -2063,11 +2242,19 @@ int con_set_default_unimap(struct vc_data *vc)
 
 static int wfd_cmd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 {
-
+#if 0
+    int ch = 0;
+    int i = 0;
+    for (; i < len; ++i) {
+        ch = (int)buf[i];
+        cmd_char_handle(pcmd, ch);
+    }
+#endif
 }
 
 static int rfd_respd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 {
+    int ret = 0;
     cmd_t *pcmd = &(c->cmd);
 
 #if 0
@@ -2100,12 +2287,25 @@ static int rfd_respd_handle(struct ssh *ssh, Channel *c, const char *buf, int le
     }
 #endif
 
+    if (vc == NULL) {
+        vc = vc_data_creat();
+        if (vc_do_resize(vc, 120, 100) != 0) {
+            debug_p("vc_do_resize failed");
+            return -1;
+        }
+        vc_data_init(vc);
+    }
+
+    return do_con_write(vc, buf, len);
+
+#if 0
     int ch = 0;
     int i = 0;
     for (; i < len; ++i) {
         ch = (int)buf[i];
         //cmd_char_handle(pcmd, ch);
     }
+#endif
 
     return 0;
 }
@@ -2114,7 +2314,8 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 {
     #if 1
     //TODO 当sftp登录成功时没有任何明确标记，导致被这个逻辑阻断，先注释掉
-    if (c->proxy_state != PROXY_STATE_CMD) {
+    if (c->proxy_state == PROXY_STATE_LOGIN_OK) {
+        c->proxy_state = PROXY_STATE_CMD;
         return 0;
     }
     #endif
@@ -2125,7 +2326,7 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         //sftp_reqst_handle(c, buf, len);
         break;
     default:
-        //wfd_cmd_handle(ssh, c, buf, len);
+        wfd_cmd_handle(ssh, c, buf, len);
         break;
     }
 

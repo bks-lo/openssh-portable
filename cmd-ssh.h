@@ -2,6 +2,7 @@
 #define __CMD_SSH_H__
 
 #include <stdbool.h>
+#include "sshbuf.h"
 
 #define NPAR 16
 #define VC_TABSTOPS_COUNT	256U
@@ -104,6 +105,7 @@ struct vc_data {
 	unsigned int	vc_need_wrap	: 1;
 	unsigned int	vc_can_do_color	: 1;
 	unsigned int	vc_report_mouse : 2;
+    unsigned int    bracketed_paste : 1;
 	unsigned char	vc_utf		: 1;	/* Unicode UTF-8 encoding */
 	unsigned char	vc_utf_count;
 	int	            vc_utf_char;
@@ -118,6 +120,9 @@ struct vc_data {
 	struct uni_pagedict *uni_pagedict;
 	struct uni_pagedict **uni_pagedict_loc; /* [!] Location of uni_pagedict variable for this console */
 	unsigned int    **vc_uni_lines;			/* unicode screen content */
+    unsigned int    *line;
+    struct sshbuf   *buf;
+    struct sshbuf   *prompt;
 	/* additional information is in vt_kern.h */
 };
 

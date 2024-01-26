@@ -5,12 +5,28 @@
 #include <stddef.h>
 #include <hiredis/hiredis.h>
 #include "sshbuf.h"
+#include "pathnames.h"
 
-#define     SSH_ETC_DIR         "/etc/ssh"
-#define     SSH_EXE_DIR         "/home/xiaoke/openssh-portable/"
-#define     SSH_PROXY_CMD       SSH_EXE_DIR"ssh %s@%s -p %d -o PreferredAuthentications=password -d %s"
-#define     RLOGIN_PROXY_CMD    "/usr/bin/rlogin -l %s -p %d %s"
-#define     TELNET_PROXY_CMD    "/usr/bin/telnet -l %s %s %d"
+/**
+ *  PubkeyAuthentication=no             不使用公钥证书登录
+ *  PreferredAuthentications=password   认证方法列表中只支持密码登录
+ *  NumberOfPasswordPrompts=1           只允许密码认证1次
+ *  ConnectTimeout=3                    连接建立时间不超过3秒
+ */
+
+/*
+#define     SSH_NOPWD_PROXY_CMD     _PATH_SSH_PROGRAM " -o PubkeyAuthentication=no \
+                                                    -o PreferredAuthentications=password \
+                                                    -o NumberOfPasswordPrompts=1 \
+                                                    -o ConnectTimeout=3 \
+                                                    %s@%s -p %d"
+*/
+
+#define     SSH_NOPWD_PROXY_CMD     _PATH_SSH_PROGRAM " -F " SSHDIR "/ssh_config %s@%s -p %d"
+
+#define     SSH_PROXY_CMD           SSH_NOPWD_PROXY_CMD" -d %s"
+#define     RLOGIN_PROXY_CMD        "/usr/bin/rlogin -l %s -p %d %s"
+#define     TELNET_PROXY_CMD        "/usr/bin/telnet -l %s %s %d"
 
 typedef enum proxy_state_t
 {
@@ -19,6 +35,7 @@ typedef enum proxy_state_t
     PROXY_STATE_LOGIN_OK,
 	PROXY_STATE_LOGIN_FAILED,
 	PROXY_STATE_CMD,
+    PROXY_STATE_RSPD,
     PROXY_STATE_END
 } proxy_state_t;
 

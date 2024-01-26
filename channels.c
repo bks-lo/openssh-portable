@@ -2108,7 +2108,7 @@ channel_handle_rfd(struct ssh *ssh, Channel *c)
 #ifdef PROXY_DEBUG
 			char tmp[CHANNEL_MAX_READ] = {0};
 			memcpy(tmp, sshbuf_ptr(c->input), nr);
-			debug_orig("proxy_debug read 1 [%d]: %s\n", (int)nr, tmp);
+			//debug_orig("proxy_debug read 1 [%d]: %s\n", (int)nr, tmp);
 			rspd_hexdump(sshbuf_ptr(c->input), nr);
 #endif
 
@@ -2882,7 +2882,7 @@ fd_ready(Channel *c, int p, struct pollfd *pfds, u_int npfd, int fd,
  * After poll, perform any appropriate operations for channels which have
  * events pending.
  */
- 
+
 #ifdef PROXY_ENABLE
 void
 channel_after_poll(struct ssh *ssh, struct pollfd *pfd, u_int npfd, int is_client)
