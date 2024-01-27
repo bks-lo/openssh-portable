@@ -63,3 +63,9 @@ Host *
 
     # 关闭服务端返回的主机密钥校验
     EnableCheckHostKey  no
+
+    # 启用旧的密钥交换算法，兼容老设备
+    PubkeyAcceptedKeyTypes +ssh-dss,ssh-rsa
+    KexAlgorithms +diffie-hellman-group1-sha1
+    Ciphers aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,3des-cbc
+    HostKeyAlgorithms +ssh-dss,ssh-rsa
