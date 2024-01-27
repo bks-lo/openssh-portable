@@ -331,7 +331,7 @@ int login_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
     const char *s_pwd = NULL;
     s_pwd = find_last_word(buf, len, 0);
     if (s_pwd == NULL) {
-        return 0;
+        return -1;
     }
 
     proxy_info_st *pinfo = &(c->proxy_info);
@@ -342,6 +342,7 @@ int login_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         return 0;
     }
 
+    return -1;
 }
 
 /**
@@ -630,6 +631,8 @@ int proxy_auth_password(proxy_info_st *pinfo, char *sid)
         return -1;
     }
 
+    /* 自定义的-h选项，用来判断服务登陆是否成功，
+       有些网络设备不支持exit命令，即使退出成功，退出码也是255 */
     char cmd[1024] = {0};
     snprintf(cmd, sizeof(cmd), SSH_PROXY_CMD" -h 2>&1",
              pinfo->username,

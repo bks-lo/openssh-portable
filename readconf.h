@@ -185,6 +185,7 @@ typedef struct {
 
     int test_pwd;        /* Test server username and password  */
 
+    int enable_check_host_key;
 	char	*ignored_unknown; /* Pattern list of unknown tokens to ignore */
 }       Options;
 

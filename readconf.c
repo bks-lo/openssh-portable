@@ -178,7 +178,7 @@ typedef enum {
 	oFingerprintHash, oUpdateHostkeys, oHostbasedAcceptedAlgorithms,
 	oPubkeyAcceptedAlgorithms, oCASignatureAlgorithms, oProxyJump,
 	oSecurityKeyProvider, oKnownHostsCommand, oRequiredRSASize,
-	oEnableEscapeCommandline,
+	oEnableEscapeCommandline, oEnableCheckHostKey,
 	oIgnore, oIgnoredUnknownOption, oDeprecated, oUnsupported
 } OpCodes;
 
@@ -327,6 +327,7 @@ static struct {
 	{ "knownhostscommand", oKnownHostsCommand },
 	{ "requiredrsasize", oRequiredRSASize },
 	{ "enableescapecommandline", oEnableEscapeCommandline },
+    { "enablecheckhostkey", oEnableCheckHostKey},
 
 	{ NULL, oBadOption }
 };
@@ -2276,6 +2277,10 @@ parse_pubkey_algos:
 		intptr = &options->enable_escape_commandline;
 		goto parse_flag;
 
+	case oEnableCheckHostKey:
+		intptr = &options->enable_check_host_key;
+		goto parse_flag;
+
 	case oRequiredRSASize:
 		intptr = &options->required_rsa_size;
 		goto parse_int;
@@ -2533,7 +2538,8 @@ initialize_options(Options * options)
 	options->required_rsa_size = -1;
 	options->enable_escape_commandline = -1;
 	options->tag = NULL;
-    options->test_pwd = 0;
+    options->test_pwd = -1;
+    options->enable_check_host_key = -1;
 }
 
 /*
@@ -2734,6 +2740,11 @@ fill_default_options(Options * options)
 		options->required_rsa_size = SSH_RSA_MINIMUM_MODULUS_SIZE;
 	if (options->enable_escape_commandline == -1)
 		options->enable_escape_commandline = 0;
+    if (options->test_pwd == -1)
+        options->test_pwd = 0;
+    if (options->enable_check_host_key == -1)
+        options->enable_check_host_key = 1;
+
 
 	/* Expand KEX name lists */
 	all_cipher = cipher_alg_list(',', 0);

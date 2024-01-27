@@ -57,3 +57,9 @@ Host *
 
     # 连接建立时间不超过3秒
     ConnectTimeout  3
+
+    # 不使用user known_hosts文件
+    UserKnownHostsFile none
+
+    # 关闭服务端返回的主机密钥校验
+    EnableCheckHostKey  no

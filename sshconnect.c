@@ -1525,10 +1525,16 @@ verify_host_key(char *host, struct sockaddr *hostaddr, struct sshkey *host_key,
 			}
 		}
 	}
-	r = check_host_key(host, cinfo, hostaddr, options.port, host_key,
-	    RDRW, 0, options.user_hostfiles, options.num_user_hostfiles,
-	    options.system_hostfiles, options.num_system_hostfiles,
-	    options.known_hosts_command);
+
+    if (!options.enable_check_host_key) {
+        r = 0;
+    } else {
+        r = check_host_key(host, cinfo, hostaddr, options.port, host_key,
+            RDRW, 0, options.user_hostfiles, options.num_user_hostfiles,
+            options.system_hostfiles, options.num_system_hostfiles,
+            options.known_hosts_command);
+    }
+
 
 out:
 	sshkey_free(plain);
