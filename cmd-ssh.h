@@ -107,6 +107,7 @@ struct vc_data {
 	unsigned int	vc_report_mouse : 2;
     unsigned int    bracketed_paste : 1;
 	unsigned char	vc_utf		: 1;	/* Unicode UTF-8 encoding */
+    unsigned char	is_bottom		: 1;	/* y is bottom */
 	unsigned char	vc_utf_count;
 	int	            vc_utf_char;
 	//DECLARE_BITMAP(vc_tab_stop, VC_TABSTOPS_COUNT);	/* Tab stops. 256 columns. */

@@ -328,6 +328,9 @@ int login_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
     }
 #endif
 
+    /* 因为在拿到了sid时，会进行一次登录尝试，所以能走到这里的流程，都认为是能登录成功的，除非网络原因 */
+    /* 部分服务器在登录成功时，不会返回任何明确标识，所以这里增加一步密码输入，用来在逻辑上明确登录成功状态 */
+
     const char *s_pwd = NULL;
     s_pwd = find_last_word(buf, len, 0);
     if (s_pwd == NULL) {

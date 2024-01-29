@@ -15,6 +15,7 @@
 #define VC_MALLOC_SIZE_MAX  (1 << 22)
 
 static struct vc_data *vc = NULL;
+static struct vc_data *vc_cmd = NULL;
 
 static struct uni_pagedict *dflt;
 
@@ -213,7 +214,7 @@ static int print_uni_line(struct vc_data *vc)
     }
 
     struct sshbuf *pbuf = sshbuf_new();
-    debug_p("y=%d, x == %d", y, x);
+    debug_p("y=%d, x=%d", y, x);
     uints_to_sshbuf(vc->vc_uni_lines[y], x, pbuf);
     //sshbuf_consume(pbuf, sshbuf_len(vc->prompt));
     debug_p("[%d]>>%s", sshbuf_len(pbuf), sshbuf_ptr(pbuf));
@@ -1095,10 +1096,6 @@ static inline void bs(struct vc_data *vc)
 
 static inline void cr(struct vc_data *vc)
 {
-#if 1
-    debug_p("y=%u,x=%u", vc->state.y, vc->state.x);
-    print_uni_line(vc);
-#endif
 	vc->vc_pos -= vc->state.x << 1;
 	vc->vc_need_wrap = vc->state.x = 0;
 }
@@ -1111,11 +1108,13 @@ static void lf(struct vc_data *vc)
 	if (vc->state.y + 1 == vc->vc_bottom) {
         debug_p("y at bottom");
         // con_scroll(vc, vc->vc_top, vc->vc_bottom, SM_UP, 1);
+        vc->is_bottom = 1;
     }
 	else if (vc->state.y < vc->vc_rows - 1) {
 		vc->state.y++;
 		vc->vc_pos += vc->vc_size_row;
 	}
+
 	vc->vc_need_wrap = 0;
 	//notify_write(vc, '\n');
 }
@@ -1155,6 +1154,9 @@ static int vc_con_write_normal(struct vc_data *vc, int tc, int c)
     unsigned short himask = vc->vc_hi_font_mask;
     unsigned short charmask = himask ? 0x1ff : 0xff;
 
+    if (vc->is_bottom)
+        return 0;
+
     if (vc->vc_utf && !vc->vc_disp_ctrl && is_double_width(c)) {
         width = 2;
     }
@@ -1186,13 +1188,15 @@ static int vc_con_write_normal(struct vc_data *vc, int tc, int c)
 
 	next_c = c;
 	while (1) {
-		if (vc->vc_need_wrap || vc->vc_decim) {
-			//con_flush(vc, draw);
-        }
 		if (vc->vc_need_wrap) {
+            print_uni_line(vc);
 			cr(vc);
 			lf(vc);
 		}
+
+        if (vc->is_bottom)
+            break;
+
 		if (vc->vc_decim) {
             vc_uniscr_insert(vc, 1);
         }
@@ -1215,12 +1219,19 @@ static int vc_con_write_normal(struct vc_data *vc, int tc, int c)
 			draw->from = vc->vc_pos;
 		}
         */
-
-		if (vc->state.x == vc->vc_cols - 1) {
+        #if 0
+        if (vc->state.x == vc->vc_cols - 1) {
 			vc->vc_need_wrap = vc->vc_decawm;
 		} else {
 			vc->state.x++;
 		}
+        #else
+        vc->state.x++;
+		if (vc->state.x == vc->vc_cols) {
+			vc->vc_need_wrap = vc->vc_decawm;
+		}
+        #endif
+
 
 		if (!--width)
 			break;
@@ -1524,9 +1535,10 @@ static void do_con_trol(struct vc_data *vc, int c)
 		debug_p("tab key");
 		return;
 	case 10: case 11: case 12:
+        print_uni_line(vc);
         lf(vc);
 		// debug_p("\\n, and fallthrough");
-		// fallthrough;
+		// return;
 	case 13:
         // debug_p("\\r");
 		cr(vc);
@@ -1966,7 +1978,448 @@ rescan_last_byte:
     return n;
 }
 
+static void do_cmd_con_trol(struct vc_data *vc, int c)
+{
+	/*
+	 *  Control characters can be used in the _middle_
+	 *  of an escape sequence, aside from ANSI control strings.
+	 */
+	if (ansi_control_string(vc->vc_state) && c >= 8 && c <= 13)
+		return;
+	switch (c) {
+	case 0:
+		return;
+	case 7:
+		if (ansi_control_string(vc->vc_state))
+			vc->vc_state = ESnormal;
+		return;
+	case 8:
+		bs(vc);
+		return;
+	case 9:
+		debug_p("tab key");
+		return;
+	case 10: case 11: case 12:
+        lf(vc);
+		// debug_p("\\n, and fallthrough");
+		// fallthrough;
+	case 13:
+        // debug_p("\\r");
+		cr(vc);
+		return;
+	case 14:
+		vc->state.charset = 1;
+		vc->vc_translate = set_translate(vc->state.Gx_charset[1], vc);
+		vc->vc_disp_ctrl = 1;
+		return;
+	case 15:
+		vc->state.charset = 0;
+		vc->vc_translate = set_translate(vc->state.Gx_charset[0], vc);
+		vc->vc_disp_ctrl = 0;
+		return;
+	case 24: case 26:
+		vc->vc_state = ESnormal;
+		return;
+	case 27:
+		vc->vc_state = ESesc;
+		return;
+	case 127:
+		del(vc);
+		return;
+	case 128+27:
+		vc->vc_state = ESsquare;
+		return;
+	}
+	switch(vc->vc_state) {
+	case ESesc:
+		vc->vc_state = ESnormal;
+		switch (c) {
+		case '[':
+			vc->vc_state = ESsquare;
+			return;
+		case ']':
+			vc->vc_state = ESnonstd;
+			return;
+		case '_':
+			vc->vc_state = ESapc;
+			return;
+		case '^':
+			vc->vc_state = ESpm;
+			return;
+		case '%':
+			vc->vc_state = ESpercent;
+			return;
+		case 'E':
+			cr(vc);
+			lf(vc);
+			return;
+		case 'M':
+			ri(vc);
+			return;
+		case 'D':
+			lf(vc);
+			return;
+		case 'H':
+			/*
+            if (vc->state.x < VC_TABSTOPS_COUNT)
+				set_bit(vc->state.x, vc->vc_tab_stop);
+            */
+			return;
+		case 'P':
+			vc->vc_state = ESdcs;
+			return;
+		case 'Z':
+			//respond_ID(tty);
+			return;
+		case '7':
+			save_cur(vc);
+			return;
+		case '8':
+			restore_cur(vc);
+			return;
+		case '(':
+			vc->vc_state = ESsetG0;
+			return;
+		case ')':
+			vc->vc_state = ESsetG1;
+			return;
+		case '#':
+			vc->vc_state = EShash;
+			return;
+		case 'c':
+			//reset_terminal(vc, 1);
+			return;
+		case '>':  /* Numeric keypad */
+			//clr_kbd(vc, kbdapplic);
+			return;
+		case '=':  /* Appl. keypad */
+			//set_kbd(vc, kbdapplic);
+			return;
+		}
+		return;
+	case ESnonstd:
+		if (c=='P') {   /* palette escape sequence */
+			for (vc->vc_npar = 0; vc->vc_npar < NPAR; vc->vc_npar++)
+				vc->vc_par[vc->vc_npar] = 0;
+			vc->vc_npar = 0;
+			vc->vc_state = ESpalette;
+			return;
+		} else if (c=='R') {   /* reset palette */
+			//reset_palette(vc);
+			vc->vc_state = ESnormal;
+		} else if (c>='0' && c<='9')
+			vc->vc_state = ESosc;
+		else
+			vc->vc_state = ESnormal;
+		return;
+	case ESpalette:
+		if (isxdigit(c)) {
+			vc->vc_par[vc->vc_npar++] = hex_to_bin(c);
+			if (vc->vc_npar == 7) {
+				int i = vc->vc_par[0] * 3, j = 1;
+				vc->vc_palette[i] = 16 * vc->vc_par[j++];
+				vc->vc_palette[i++] += vc->vc_par[j++];
+				vc->vc_palette[i] = 16 * vc->vc_par[j++];
+				vc->vc_palette[i++] += vc->vc_par[j++];
+				vc->vc_palette[i] = 16 * vc->vc_par[j++];
+				vc->vc_palette[i] += vc->vc_par[j];
+				//set_palette(vc);
+				vc->vc_state = ESnormal;
+			}
+		} else
+			vc->vc_state = ESnormal;
+		return;
+	case ESsquare:
+		for (vc->vc_npar = 0; vc->vc_npar < NPAR; vc->vc_npar++)
+			vc->vc_par[vc->vc_npar] = 0;
+		vc->vc_npar = 0;
+		vc->vc_state = ESgetpars;
+		if (c == '[') { /* Function key */
+			vc->vc_state=ESfunckey;
+			return;
+		}
+		switch (c) {
+		case '?':
+			vc->vc_priv = EPdec;
+			return;
+		case '>':
+			vc->vc_priv = EPgt;
+			return;
+		case '=':
+			vc->vc_priv = EPeq;
+			return;
+		case '<':
+			vc->vc_priv = EPlt;
+			return;
+		}
+		vc->vc_priv = EPecma;
+		// fallthrough;
+	case ESgetpars:
+		if (c == ';' && vc->vc_npar < NPAR - 1) {
+			vc->vc_npar++;
+			return;
+		} else if (c>='0' && c<='9') {
+			vc->vc_par[vc->vc_npar] *= 10;
+			vc->vc_par[vc->vc_npar] += c - '0';
+			return;
+		}
+		if (c >= 0x20 && c <= 0x3f) { /* 0x2x, 0x3a and 0x3c - 0x3f */
+			vc->vc_state = EScsiignore;
+			return;
+		}
+		vc->vc_state = ESnormal;
+		switch(c) {
+		case 'h':
+			if (vc->vc_priv <= EPdec)
+				set_mode(vc, 1);
+			return;
+		case 'l':
+			if (vc->vc_priv <= EPdec)
+				set_mode(vc, 0);
+			return;
+		case 'c':
+			if (vc->vc_priv == EPdec) {
+				if (vc->vc_par[0])
+					vc->vc_cursor_type =
+						CUR_MAKE(vc->vc_par[0],
+							 vc->vc_par[1],
+							 vc->vc_par[2]);
+				else
+					vc->vc_cursor_type = 2;
+				return;
+			}
+			break;
+		case 'm':
+			if (vc->vc_priv == EPdec) {
+				//clear_selection();
+				if (vc->vc_par[0])
+					vc->vc_complement_mask = vc->vc_par[0] << 8 | vc->vc_par[1];
+				else
+					vc->vc_complement_mask = vc->vc_s_complement_mask;
+				return;
+			}
+			break;
+		case 'n':
+			if (vc->vc_priv == EPecma) {
+                /*
+				if (vc->vc_par[0] == 5)
+					status_report(tty);
+				else if (vc->vc_par[0] == 6)
+					cursor_report(vc, tty);
+                */
+			}
+			return;
+		}
+		if (vc->vc_priv != EPecma) {
+			vc->vc_priv = EPecma;
+			return;
+		}
+		switch(c) {
+		case 'G': case '`':
+			if (vc->vc_par[0])
+				vc->vc_par[0]--;
+			gotoxy(vc, vc->vc_par[0], vc->state.y);
+			return;
+		case 'A':
+			if (!vc->vc_par[0])
+				vc->vc_par[0]++;
+			gotoxy(vc, vc->state.x, vc->state.y - vc->vc_par[0]);
+			return;
+		case 'B': case 'e':
+			if (!vc->vc_par[0])
+				vc->vc_par[0]++;
+			gotoxy(vc, vc->state.x, vc->state.y + vc->vc_par[0]);
+			return;
+		case 'C': case 'a':
+			if (!vc->vc_par[0])
+				vc->vc_par[0]++;
+			gotoxy(vc, vc->state.x + vc->vc_par[0], vc->state.y);
+			return;
+		case 'D':
+			if (!vc->vc_par[0])
+				vc->vc_par[0]++;
+			gotoxy(vc, vc->state.x - vc->vc_par[0], vc->state.y);
+			return;
+		case 'E':
+			if (!vc->vc_par[0])
+				vc->vc_par[0]++;
+			gotoxy(vc, 0, vc->state.y + vc->vc_par[0]);
+			return;
+		case 'F':
+			if (!vc->vc_par[0])
+				vc->vc_par[0]++;
+			gotoxy(vc, 0, vc->state.y - vc->vc_par[0]);
+			return;
+		case 'd':
+			if (vc->vc_par[0])
+				vc->vc_par[0]--;
+			gotoxay(vc, vc->state.x ,vc->vc_par[0]);
+			return;
+		case 'H': case 'f':
+			if (vc->vc_par[0])
+				vc->vc_par[0]--;
+			if (vc->vc_par[1])
+				vc->vc_par[1]--;
+			gotoxay(vc, vc->vc_par[1], vc->vc_par[0]);
+			return;
+		case 'J':
+			csi_J(vc, vc->vc_par[0]);
+			return;
+		case 'K':
+			csi_K(vc, vc->vc_par[0]);
+			return;
+		case 'L':
+			csi_L(vc, vc->vc_par[0]);
+			return;
+		case 'M':
+			csi_M(vc, vc->vc_par[0]);
+			return;
+		case 'P':
+			csi_P(vc, vc->vc_par[0]);
+			return;
+		case 'c':
+            /*
+			if (!vc->vc_par[0])
+				respond_ID(tty);
+            */
+			return;
+		case 'g':
+            /*
+			if (!vc->vc_par[0] && vc->state.x < VC_TABSTOPS_COUNT)
+				set_bit(vc->state.x, vc->vc_tab_stop);
+			else if (vc->vc_par[0] == 3)
+				bitmap_zero(vc->vc_tab_stop, VC_TABSTOPS_COUNT);
+            */
+			return;
+		case 'm':
+			//csi_m(vc);
+			return;
+		case 'q': /* DECLL - but only 3 leds */
+			/* map 0,1,2,3 to 0,1,2,4 */
+            /*
+			if (vc->vc_par[0] < 4)
+				vt_set_led_state(vc->vc_num,
+					    (vc->vc_par[0] < 3) ? vc->vc_par[0] : 4);
+            */
+			return;
+		case 'r':
+			if (!vc->vc_par[0])
+				vc->vc_par[0]++;
+			if (!vc->vc_par[1])
+				vc->vc_par[1] = vc->vc_rows;
+			/* Minimum allowed region is 2 lines */
+			if (vc->vc_par[0] < vc->vc_par[1] &&
+			    vc->vc_par[1] <= vc->vc_rows) {
+				vc->vc_top = vc->vc_par[0] - 1;
+				vc->vc_bottom = vc->vc_par[1];
+				gotoxay(vc, 0, 0);
+			}
+			return;
+		case 's':
+			save_cur(vc);
+			return;
+		case 'u':
+			restore_cur(vc);
+			return;
+		case 'X':
+			csi_X(vc, vc->vc_par[0]);
+			return;
+		case '@':
+			csi_at(vc, vc->vc_par[0]);
+			return;
+		case ']': /* setterm functions */
+			// setterm_command(vc);
+			return;
+		}
+		return;
+	case EScsiignore:
+		if (c >= 20 && c <= 0x3f)
+			return;
+		vc->vc_state = ESnormal;
+		return;
+	case ESpercent:
+		vc->vc_state = ESnormal;
+		switch (c) {
+		case '@':  /* defined in ISO 2022 */
+			vc->vc_utf = 0;
+			return;
+		case 'G':  /* prelim official escape code */
+		case '8':  /* retained for compatibility */
+			vc->vc_utf = 1;
+			return;
+		}
+		return;
+	case ESfunckey:
+		vc->vc_state = ESnormal;
+		return;
+	case EShash:
+		vc->vc_state = ESnormal;
+		if (c == '8') {
+			/* DEC screen alignment test. kludge :-) */
+			vc->vc_video_erase_char = (vc->vc_video_erase_char & 0xff00) | 'E';
+			csi_J(vc, 2);
+			vc->vc_video_erase_char = (vc->vc_video_erase_char & 0xff00) | ' ';
+			//do_update_region(vc, vc->vc_origin, vc->vc_screenbuf_size / 2);
+		}
+		return;
+	case ESsetG0:
+		vc_setGx(vc, 0, c);
+		vc->vc_state = ESnormal;
+		return;
+	case ESsetG1:
+		vc_setGx(vc, 1, c);
+		vc->vc_state = ESnormal;
+		return;
+	case ESapc:
+		return;
+	case ESosc:
+		return;
+	case ESpm:
+		return;
+	case ESdcs:
+		return;
+	default:
+		vc->vc_state = ESnormal;
+	}
+}
 
+static int do_cmd_con_write(struct vc_data *vc, const unsigned char *buf, int count)
+{
+    int c, tc, n = 0;
+    unsigned int currcons;
+    bool rescan;
+    int orig;
+
+    while (count) {
+        orig = *buf;
+        buf++;
+        n++;
+        count--;
+rescan_last_byte:
+        c = orig;
+        rescan = false;
+
+        tc = vc_translate(vc, &c, &rescan);
+        if (tc == -1) {
+            continue;
+        }
+
+        if (vc_is_control(vc, tc, c)) {
+            //con_flush(vc, &draw);
+            do_cmd_con_trol(vc, orig);
+            continue;
+        }
+
+        if (vc_con_write_normal(vc, tc, c) < 0)
+            continue;
+
+        if (rescan)
+            goto rescan_last_byte;
+    }
+
+    print_uni_line(vc);
+    return n;
+}
 
 /* console_lock is held (except via vc_init()) */
 static void reset_terminal(struct vc_data *vc)
@@ -2242,50 +2695,25 @@ int con_set_default_unimap(struct vc_data *vc)
 
 static int wfd_cmd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 {
-#if 0
-    int ch = 0;
-    int i = 0;
-    for (; i < len; ++i) {
-        ch = (int)buf[i];
-        cmd_char_handle(pcmd, ch);
+    int ret = 0;
+    cmd_t *pcmd = &(c->cmd);
+
+    if (vc_cmd == NULL) {
+        vc_cmd = vc_data_creat();
+        if (vc_do_resize(vc_cmd, 120, 100) != 0) {
+            debug_p("vc_do_resize failed");
+            return -1;
+        }
+        vc_data_init(vc_cmd);
     }
-#endif
+
+    return do_cmd_con_write(vc_cmd, buf, len);
 }
 
 static int rfd_respd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 {
     int ret = 0;
     cmd_t *pcmd = &(c->cmd);
-
-#if 0
-
-    if (pcmd->cmd_state != CSrespd) {
-        return 0;
-    }
-
-    int i = 0;
-    for (; i < len; ++i) {
-        ch = (int)buf[i];
-
-
-    }
-#endif
-
-#if 0
-    switch (pcmd->cmd_state) {
-    case CSrespd:
-        if (strcmp(c->prompt, buf) == 0) {
-
-        }
-        sshbuf_put_string(pcmd->cmd_buf, buf, len);
-        break;
-    case CSfindrespd:
-        sshbuf_put_string(pcmd->cmd_buf, buf, len);
-        break;
-    default:
-        break;
-    }
-#endif
 
     if (vc == NULL) {
         vc = vc_data_creat();
@@ -2297,38 +2725,23 @@ static int rfd_respd_handle(struct ssh *ssh, Channel *c, const char *buf, int le
     }
 
     return do_con_write(vc, buf, len);
-
-#if 0
-    int ch = 0;
-    int i = 0;
-    for (; i < len; ++i) {
-        ch = (int)buf[i];
-        //cmd_char_handle(pcmd, ch);
-    }
-#endif
-
-    return 0;
 }
 
 int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 {
-    #if 1
-    //TODO 当sftp登录成功时没有任何明确标记，导致被这个逻辑阻断，先注释掉
-    if (c->proxy_state == PROXY_STATE_LOGIN_OK) {
+    switch (c->proxy_state) {
+    case PROXY_STATE_LOGIN_OK:
+        /* 为了让rfd退出 PROXY_STATE_LOGIN_OK 状态，避免一直记录prompt */
         c->proxy_state = PROXY_STATE_CMD;
-        return 0;
-    }
-    #endif
-
-    proxy_info_st *pinfo = &(c->proxy_info);
-    switch (pinfo->pt) {
-    case PT_SFTP:
-        //sftp_reqst_handle(c, buf, len);
-        break;
-    default:
+        // fallthrough
+    case PROXY_STATE_CMD:
         wfd_cmd_handle(ssh, c, buf, len);
         break;
+    default:
+        fatal("state = %d, invalid", c->proxy_state);
+        break;
     }
+
 
     return 0;
 }
@@ -2345,10 +2758,8 @@ int cmd_ssh_rfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
     case PROXY_STATE_CMD:
         rfd_respd_handle(ssh, c, buf, len);
         break;
-    case PROXY_STATE_LOGIN_FAILED:
-        fatal("login failed");  /* exit */
-        break;
     default:
+        fatal("state = %d, invalid", c->proxy_state);
         break;
     }
 

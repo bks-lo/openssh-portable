@@ -1,5 +1,18 @@
 #include <check.h>
 
+#define vcx vc->state.x
+#define vcy vc->state.y
+#define vce vc->vc_cols
+#define STR_LEN(str)    str, sizeof(str) - 1
+
+#define compare_sshbuf(y, x, str) do {          \
+    struct sshbuf *sbuf = sshbuf_new();                 \
+    sshbuf_reset(sbuf);                                 \
+    uints_to_sshbuf(vc->vc_uni_lines[y], x, sbuf);      \
+    ck_assert_msg(strncmp(sshbuf_ptr(sbuf), STR_LEN(str)) == 0, "sshbuf[%s] != "str, sshbuf_ptr(sbuf)); \
+    sshbuf_free(sbuf);                                  \
+} while(0)
+
 
 START_TEST(test_do_con_trol)
 {
@@ -14,6 +27,7 @@ START_TEST(test_do_con_trol)
 
     unsigned char buf[] = {"cd /home/xiaoke"};
     do_con_write(vc, buf, sizeof(buf) - 1);
+    compare_sshbuf(0, vcx, "cd /home/xiaoke");
 
     unsigned char buf1[] = {0x1b, 0x5b, 0x3f, 0x32, 0x30, 0x30, 0x34, 0x6c};
     do_con_write(vc, buf1, sizeof(buf1));
@@ -201,15 +215,51 @@ START_TEST(test_do_con_trol_tencent)
 }
 END_TEST
 
+
+START_TEST(test_do_con_trol_newline)
+{
+    struct vc_data *vc = vc_data_creat();
+    int ret = vc_do_resize(vc, 10, 3);
+    ck_assert_msg(ret == 0, "ret != 0", ret);
+    ck_assert_msg(vc->vc_cols == 10, "vc->vc_cols = %u", vc->vc_cols);
+
+    vc_data_init(vc);
+    ck_assert_msg(vc->vc_size_row == vc->vc_cols << 1, "vc_size_row = %u, vc_cols = %d", vc->vc_size_row, vc->vc_cols);
+    ck_assert_msg(vc->vc_screenbuf_size == vc->vc_rows * vc->vc_size_row, "vc_screenbuf_size = %u", vc->vc_screenbuf_size);
+
+    unsigned char buf0[] = {"01234567\n89abcdefg"};      // 换行
+    do_con_write(vc, buf0, sizeof(buf0) - 1);
+    compare_sshbuf(0, vce, "01234567");
+    compare_sshbuf(1, vce, "89abcdefg");
+
+    gotoxy(vc, 0, 0);
+    unsigned char buf1[] = {"0123456789abcdefg"};      // 自动换行
+    do_con_write(vc, buf1, sizeof(buf1) - 1);
+
+    compare_sshbuf(0, vce, "0123456789");
+    compare_sshbuf(1, vcx, "abcdefg");
+
+    unsigned char buf2[] = {"hij0123456789abcdef"};      // 超过了 最大行数
+    do_con_write(vc, buf2, sizeof(buf2) - 1);
+
+    compare_sshbuf(0, vce, "0123456789");
+    compare_sshbuf(1, vce, "abcdefghij");
+    compare_sshbuf(2, vce, "0123456789");
+
+
+}
+END_TEST
+
 Suite *make_suite(void)
 {
 	Suite *s = suite_create("test");
 	TCase *tc = tcase_create("cmd-ssh-test");
 
-    //tcase_add_test(tc, test_do_con_trol);
-    //tcase_add_test(tc, test_conv_uni_to_pc);
-    //tcase_add_test(tc, test_do_con_trol_dbmy);
+    tcase_add_test(tc, test_do_con_trol);
+    tcase_add_test(tc, test_conv_uni_to_pc);
+    tcase_add_test(tc, test_do_con_trol_dbmy);
     tcase_add_test(tc, test_do_con_trol_tencent);
+    tcase_add_test(tc, test_do_con_trol_newline);
 
 	suite_add_tcase(s, tc);
 	return s;
