@@ -375,8 +375,12 @@ int uints_to_sshbuf(unsigned int *ls, int ls_len, struct sshbuf *sbuf)
     char tb[sizeof(unsigned int)] = {0};
     for (; i < ls_len; ++i) {
         j = uint_to_char(ls[i], tb, sizeof(tb));
+
         if (j > 0) {
             sshbuf_put(sbuf, tb, j);
+        }
+        if (j == 1 && tb[0] == 0) {
+            break;
         }
     }
 
@@ -385,6 +389,20 @@ int uints_to_sshbuf(unsigned int *ls, int ls_len, struct sshbuf *sbuf)
 
     return 0;
 }
+
+int vc_data_to_sshbuf(struct vc_data *vc, struct sshbuf *sbuf)
+{
+    int y = vc->state.y;
+    int x = vc->state.x;
+    int i = 0;
+    int j = 0;
+    for (; j < y; ++j) {
+        uints_to_sshbuf(vc->vc_uni_lines[j], vc->vc_cols, sbuf);
+        sshbuf_put_u8(sbuf, '\n');
+    }
+    uints_to_sshbuf(vc->vc_uni_lines[j], x, sbuf);
+}
+
 
 int print_uni_line(struct vc_data *vc)
 {
@@ -397,7 +415,6 @@ int print_uni_line(struct vc_data *vc)
     struct sshbuf *pbuf = sshbuf_new();
     debug_p("y=%d, x=%d", y, x);
     uints_to_sshbuf(vc->vc_uni_lines[y], x, pbuf);
-    //sshbuf_consume(pbuf, sshbuf_len(vc->prompt));
     debug_p("[%d]>>%s", sshbuf_len(pbuf), sshbuf_ptr(pbuf));
     sshbuf_free(pbuf);
 }
@@ -475,6 +492,7 @@ static void vc_uniscr_free(unsigned int **uni_lines)
 	free(uni_lines);
 }
 
+
 static void vc_uniscr_set(struct vc_data *vc, unsigned int **new_uni_lines)
 {
 	vc_uniscr_free(vc->vc_uni_lines);
@@ -485,9 +503,6 @@ static void vc_uniscr_putc(struct vc_data *vc, unsigned int uc)
 {
 	if (vc->vc_uni_lines)
 		vc->vc_uni_lines[vc->state.y][vc->state.x] = uc;
-
-    sshbuf_put(vc->buf, &uc, sizeof(uc));
-    //sshbuf_poke(vc->buf, vc->state.x, &uc, sizeof(uc));
 }
 
 static void vc_uniscr_insert(struct vc_data *vc, unsigned int nr)
@@ -500,8 +515,6 @@ static void vc_uniscr_insert(struct vc_data *vc, unsigned int nr)
 		memmove(&ln[x + nr], &ln[x], len);
 		memset(&ln[x], ' ', nr);
 	}
-
-    sshbuf_slide(vc->buf, x * sizeof(x), nr * sizeof(nr));
 }
 
 static void vc_uniscr_delete(struct vc_data *vc, unsigned int nr)
@@ -513,8 +526,6 @@ static void vc_uniscr_delete(struct vc_data *vc, unsigned int nr)
 		memcpy(&ln[x], &ln[x + nr], (cols - x - nr) * sizeof(*ln));
 		memset(&ln[cols - nr], ' ', nr);
 	}
-
-    sshbuf_delete(vc->buf, x * sizeof(x), nr * sizeof(nr));
 }
 
 static void vc_uniscr_clear_line(struct vc_data *vc, unsigned int x, unsigned int nr)
@@ -1211,7 +1222,7 @@ static void vc_setGx(struct vc_data *vc, unsigned int which, int c)
 }
 
 /* console_lock is held (except via vc_init()) */
-static void reset_terminal(struct vc_data *vc)
+void reset_terminal(struct vc_data *vc)
 {
 	unsigned int i;
 
@@ -1236,6 +1247,10 @@ static void reset_terminal(struct vc_data *vc)
 	vc->vc_decawm		= 1;
 	vc->vc_deccm		= 1;
 	vc->vc_decim		= 0;
+
+    vc->is_bottom       = 0;
+    vc->is_cr           = 0;
+    vc->is_lf           = 0;
 
 	vc->vc_cursor_type = 2;
 	vc->vc_complement_mask = vc->vc_s_complement_mask;
@@ -1313,8 +1328,6 @@ void vc_data_init(struct vc_data *vc)
 	vc->vt_newvt = -1;
 
     reset_terminal(vc);
-    vc->buf = sshbuf_new();
-    vc->prompt = sshbuf_new();
 }
 
 static int con_allocate_new(struct vc_data *vc)
@@ -1569,477 +1582,20 @@ void do_con_trol(struct vc_data *vc, int c)
 		debug_p("tab key");
 		return;
 	case 10: case 11: case 12:
-        print_uni_line(vc);
-        lf(vc);
+
 		// debug_p("\\n, and fallthrough");
 		// return;
 	case 13:
         // debug_p("\\r");
-		cr(vc);
-		return;
-	case 14:
-		vc->state.charset = 1;
-		vc->vc_translate = set_translate(vc->state.Gx_charset[1], vc);
-		vc->vc_disp_ctrl = 1;
-		return;
-	case 15:
-		vc->state.charset = 0;
-		vc->vc_translate = set_translate(vc->state.Gx_charset[0], vc);
-		vc->vc_disp_ctrl = 0;
-		return;
-	case 24: case 26:
-		vc->vc_state = ESnormal;
-		return;
-	case 27:
-		vc->vc_state = ESesc;
-		return;
-	case 127:
-		del(vc);
-		return;
-	case 128+27:
-		vc->vc_state = ESsquare;
-		return;
-	}
-	switch(vc->vc_state) {
-	case ESesc:
-		vc->vc_state = ESnormal;
-		switch (c) {
-		case '[':
-			vc->vc_state = ESsquare;
-			return;
-		case ']':
-			vc->vc_state = ESnonstd;
-			return;
-		case '_':
-			vc->vc_state = ESapc;
-			return;
-		case '^':
-			vc->vc_state = ESpm;
-			return;
-		case '%':
-			vc->vc_state = ESpercent;
-			return;
-		case 'E':
-			cr(vc);
-			lf(vc);
-			return;
-		case 'M':
-			ri(vc);
-			return;
-		case 'D':
-			lf(vc);
-			return;
-		case 'H':
-			/*
-            if (vc->state.x < VC_TABSTOPS_COUNT)
-				set_bit(vc->state.x, vc->vc_tab_stop);
-            */
-			return;
-		case 'P':
-			vc->vc_state = ESdcs;
-			return;
-		case 'Z':
-			//respond_ID(tty);
-			return;
-		case '7':
-			save_cur(vc);
-			return;
-		case '8':
-			restore_cur(vc);
-			return;
-		case '(':
-			vc->vc_state = ESsetG0;
-			return;
-		case ')':
-			vc->vc_state = ESsetG1;
-			return;
-		case '#':
-			vc->vc_state = EShash;
-			return;
-		case 'c':
-			//reset_terminal(vc, 1);
-			return;
-		case '>':  /* Numeric keypad */
-			//clr_kbd(vc, kbdapplic);
-			return;
-		case '=':  /* Appl. keypad */
-			//set_kbd(vc, kbdapplic);
-			return;
-		}
-		return;
-	case ESnonstd:
-		if (c=='P') {   /* palette escape sequence */
-			for (vc->vc_npar = 0; vc->vc_npar < NPAR; vc->vc_npar++)
-				vc->vc_par[vc->vc_npar] = 0;
-			vc->vc_npar = 0;
-			vc->vc_state = ESpalette;
-			return;
-		} else if (c=='R') {   /* reset palette */
-			//reset_palette(vc);
-			vc->vc_state = ESnormal;
-		} else if (c>='0' && c<='9')
-			vc->vc_state = ESosc;
-		else
-			vc->vc_state = ESnormal;
-		return;
-	case ESpalette:
-		if (isxdigit(c)) {
-			vc->vc_par[vc->vc_npar++] = hex_to_bin(c);
-			if (vc->vc_npar == 7) {
-				int i = vc->vc_par[0] * 3, j = 1;
-				vc->vc_palette[i] = 16 * vc->vc_par[j++];
-				vc->vc_palette[i++] += vc->vc_par[j++];
-				vc->vc_palette[i] = 16 * vc->vc_par[j++];
-				vc->vc_palette[i++] += vc->vc_par[j++];
-				vc->vc_palette[i] = 16 * vc->vc_par[j++];
-				vc->vc_palette[i] += vc->vc_par[j];
-				//set_palette(vc);
-				vc->vc_state = ESnormal;
-			}
-		} else
-			vc->vc_state = ESnormal;
-		return;
-	case ESsquare:
-		for (vc->vc_npar = 0; vc->vc_npar < NPAR; vc->vc_npar++)
-			vc->vc_par[vc->vc_npar] = 0;
-		vc->vc_npar = 0;
-		vc->vc_state = ESgetpars;
-		if (c == '[') { /* Function key */
-			vc->vc_state=ESfunckey;
-			return;
-		}
-		switch (c) {
-		case '?':
-			vc->vc_priv = EPdec;
-			return;
-		case '>':
-			vc->vc_priv = EPgt;
-			return;
-		case '=':
-			vc->vc_priv = EPeq;
-			return;
-		case '<':
-			vc->vc_priv = EPlt;
-			return;
-		}
-		vc->vc_priv = EPecma;
-		// fallthrough;
-	case ESgetpars:
-		if (c == ';' && vc->vc_npar < NPAR - 1) {
-			vc->vc_npar++;
-			return;
-		} else if (c>='0' && c<='9') {
-			vc->vc_par[vc->vc_npar] *= 10;
-			vc->vc_par[vc->vc_npar] += c - '0';
-			return;
-		}
-		if (c >= 0x20 && c <= 0x3f) { /* 0x2x, 0x3a and 0x3c - 0x3f */
-			vc->vc_state = EScsiignore;
-			return;
-		}
-		vc->vc_state = ESnormal;
-		switch(c) {
-		case 'h':
-			if (vc->vc_priv <= EPdec)
-				set_mode(vc, 1);
-			return;
-		case 'l':
-			if (vc->vc_priv <= EPdec)
-				set_mode(vc, 0);
-			return;
-		case 'c':
-			if (vc->vc_priv == EPdec) {
-				if (vc->vc_par[0])
-					vc->vc_cursor_type =
-						CUR_MAKE(vc->vc_par[0],
-							 vc->vc_par[1],
-							 vc->vc_par[2]);
-				else
-					vc->vc_cursor_type = 2;
-				return;
-			}
-			break;
-		case 'm':
-			if (vc->vc_priv == EPdec) {
-				//clear_selection();
-				if (vc->vc_par[0])
-					vc->vc_complement_mask = vc->vc_par[0] << 8 | vc->vc_par[1];
-				else
-					vc->vc_complement_mask = vc->vc_s_complement_mask;
-				return;
-			}
-			break;
-		case 'n':
-			if (vc->vc_priv == EPecma) {
-                /*
-				if (vc->vc_par[0] == 5)
-					status_report(tty);
-				else if (vc->vc_par[0] == 6)
-					cursor_report(vc, tty);
-                */
-			}
-			return;
-		}
-		if (vc->vc_priv != EPecma) {
-			vc->vc_priv = EPecma;
-			return;
-		}
-		switch(c) {
-		case 'G': case '`':
-			if (vc->vc_par[0])
-				vc->vc_par[0]--;
-			gotoxy(vc, vc->vc_par[0], vc->state.y);
-			return;
-		case 'A':
-			if (!vc->vc_par[0])
-				vc->vc_par[0]++;
-			gotoxy(vc, vc->state.x, vc->state.y - vc->vc_par[0]);
-			return;
-		case 'B': case 'e':
-			if (!vc->vc_par[0])
-				vc->vc_par[0]++;
-			gotoxy(vc, vc->state.x, vc->state.y + vc->vc_par[0]);
-			return;
-		case 'C': case 'a':
-			if (!vc->vc_par[0])
-				vc->vc_par[0]++;
-			gotoxy(vc, vc->state.x + vc->vc_par[0], vc->state.y);
-			return;
-		case 'D':
-			if (!vc->vc_par[0])
-				vc->vc_par[0]++;
-			gotoxy(vc, vc->state.x - vc->vc_par[0], vc->state.y);
-			return;
-		case 'E':
-			if (!vc->vc_par[0])
-				vc->vc_par[0]++;
-			gotoxy(vc, 0, vc->state.y + vc->vc_par[0]);
-			return;
-		case 'F':
-			if (!vc->vc_par[0])
-				vc->vc_par[0]++;
-			gotoxy(vc, 0, vc->state.y - vc->vc_par[0]);
-			return;
-		case 'd':
-			if (vc->vc_par[0])
-				vc->vc_par[0]--;
-			gotoxay(vc, vc->state.x ,vc->vc_par[0]);
-			return;
-		case 'H': case 'f':
-			if (vc->vc_par[0])
-				vc->vc_par[0]--;
-			if (vc->vc_par[1])
-				vc->vc_par[1]--;
-			gotoxay(vc, vc->vc_par[1], vc->vc_par[0]);
-			return;
-		case 'J':
-			csi_J(vc, vc->vc_par[0]);
-			return;
-		case 'K':
-			csi_K(vc, vc->vc_par[0]);
-			return;
-		case 'L':
-			csi_L(vc, vc->vc_par[0]);
-			return;
-		case 'M':
-			csi_M(vc, vc->vc_par[0]);
-			return;
-		case 'P':
-			csi_P(vc, vc->vc_par[0]);
-			return;
-		case 'c':
-            /*
-			if (!vc->vc_par[0])
-				respond_ID(tty);
-            */
-			return;
-		case 'g':
-            /*
-			if (!vc->vc_par[0] && vc->state.x < VC_TABSTOPS_COUNT)
-				set_bit(vc->state.x, vc->vc_tab_stop);
-			else if (vc->vc_par[0] == 3)
-				bitmap_zero(vc->vc_tab_stop, VC_TABSTOPS_COUNT);
-            */
-			return;
-		case 'm':
-			//csi_m(vc);
-			return;
-		case 'q': /* DECLL - but only 3 leds */
-			/* map 0,1,2,3 to 0,1,2,4 */
-            /*
-			if (vc->vc_par[0] < 4)
-				vt_set_led_state(vc->vc_num,
-					    (vc->vc_par[0] < 3) ? vc->vc_par[0] : 4);
-            */
-			return;
-		case 'r':
-			if (!vc->vc_par[0])
-				vc->vc_par[0]++;
-			if (!vc->vc_par[1])
-				vc->vc_par[1] = vc->vc_rows;
-			/* Minimum allowed region is 2 lines */
-			if (vc->vc_par[0] < vc->vc_par[1] &&
-			    vc->vc_par[1] <= vc->vc_rows) {
-				vc->vc_top = vc->vc_par[0] - 1;
-				vc->vc_bottom = vc->vc_par[1];
-				gotoxay(vc, 0, 0);
-			}
-			return;
-		case 's':
-			save_cur(vc);
-			return;
-		case 'u':
-			restore_cur(vc);
-			return;
-		case 'X':
-			csi_X(vc, vc->vc_par[0]);
-			return;
-		case '@':
-			csi_at(vc, vc->vc_par[0]);
-			return;
-		case ']': /* setterm functions */
-			// setterm_command(vc);
-			return;
-		}
-		return;
-	case EScsiignore:
-		if (c >= 20 && c <= 0x3f)
-			return;
-		vc->vc_state = ESnormal;
-		return;
-	case ESpercent:
-		vc->vc_state = ESnormal;
-		switch (c) {
-		case '@':  /* defined in ISO 2022 */
-			vc->vc_utf = 0;
-			return;
-		case 'G':  /* prelim official escape code */
-		case '8':  /* retained for compatibility */
-			vc->vc_utf = 1;
-			return;
-		}
-		return;
-	case ESfunckey:
-		vc->vc_state = ESnormal;
-		return;
-	case EShash:
-		vc->vc_state = ESnormal;
-		if (c == '8') {
-			/* DEC screen alignment test. kludge :-) */
-			vc->vc_video_erase_char = (vc->vc_video_erase_char & 0xff00) | 'E';
-			csi_J(vc, 2);
-			vc->vc_video_erase_char = (vc->vc_video_erase_char & 0xff00) | ' ';
-			//do_update_region(vc, vc->vc_origin, vc->vc_screenbuf_size / 2);
-		}
-		return;
-	case ESsetG0:
-		vc_setGx(vc, 0, c);
-		vc->vc_state = ESnormal;
-		return;
-	case ESsetG1:
-		vc_setGx(vc, 1, c);
-		vc->vc_state = ESnormal;
-		return;
-	case ESapc:
-		return;
-	case ESosc:
-		return;
-	case ESpm:
-		return;
-	case ESdcs:
-		return;
-	default:
-		vc->vc_state = ESnormal;
-	}
-}
-
-int do_con_write(struct vc_data *vc, const unsigned char *buf, int count)
-{
-    int c, tc, n = 0;
-    unsigned int currcons;
-    bool rescan;
-    int orig;
-
-    while (count) {
-        orig = *buf;
-        buf++;
-        n++;
-        count--;
-rescan_last_byte:
-        c = orig;
-        rescan = false;
-
-        tc = vc_translate(vc, &c, &rescan);
-        if (tc == -1) {
-            continue;
+        if (vc->state.x < vc->vc_cols) {
+            vc_uniscr_putc(vc, 0);
         }
-
-        if (vc_is_control(vc, tc, c)) {
-            //con_flush(vc, &draw);
-            do_con_trol(vc, orig);
-            continue;
-        }
-
-        if (vc_con_write_normal(vc, tc, c) < 0)
-            continue;
-
-        if (rescan)
-            goto rescan_last_byte;
-    }
-
-
-#if 0
-    int i = 0;
-    for (; i < vc->state.x; ++i) {
-        debug_p("vc_uni_lines=%c", (char)(vc->vc_uni_lines[vc->state.y][i]));
-    }
-    debug_p("len = %u\n", vc->state.x);
-#elif 0
-    int i = 0;
-    int tlen = sshbuf_len(vc->buf);
-    tlen = tlen >> 2;
-    char *vbuf = sshbuf_ptr(vc->buf);
-    uint32_t *uibuf = (uint32_t *)vbuf;
-    for (; i < tlen; ++i) {
-        debug_p("vc_uni_lines=%c", (char)(uibuf[i]));
-    }
-    debug_p("len = %u\n", tlen);
-#elif 1
-    print_uni_line(vc);
-#endif
-
-
-    return n;
-}
-
-void do_cmd_con_trol(struct vc_data *vc, int c)
-{
-	/*
-	 *  Control characters can be used in the _middle_
-	 *  of an escape sequence, aside from ANSI control strings.
-	 */
-	if (ansi_control_string(vc->vc_state) && c >= 8 && c <= 13)
-		return;
-	switch (c) {
-	case 0:
-		return;
-	case 7:
-		if (ansi_control_string(vc->vc_state))
-			vc->vc_state = ESnormal;
-		return;
-	case 8:
-		bs(vc);
-		return;
-	case 9:
-		debug_p("tab key");
-		return;
-	case 10: case 11: case 12:
+        print_uni_line(vc);
         lf(vc);
-		// debug_p("\\n, and fallthrough");
-		// fallthrough;
-	case 13:
-        // debug_p("\\r");
+        vc->is_lf = 1;
+
 		cr(vc);
+        vc->is_cr = 1;
 		return;
 	case 14:
 		vc->state.charset = 1;
@@ -2420,7 +1976,7 @@ void do_cmd_con_trol(struct vc_data *vc, int c)
 	}
 }
 
-int do_cmd_con_write(struct vc_data *vc, const unsigned char *buf, int count)
+int do_con_write(struct vc_data *vc, const unsigned char *buf, int count)
 {
     int c, tc, n = 0;
     unsigned int currcons;
@@ -2443,7 +1999,7 @@ rescan_last_byte:
 
         if (vc_is_control(vc, tc, c)) {
             //con_flush(vc, &draw);
-            do_cmd_con_trol(vc, orig);
+            do_con_trol(vc, orig);
             continue;
         }
 
@@ -2455,5 +2011,39 @@ rescan_last_byte:
     }
 
     print_uni_line(vc);
+
+
+
     return n;
+}
+
+int vc_is_cr(struct vc_data *vc)
+{
+    return vc->is_cr;
+}
+
+int vc_is_lf(struct vc_data *vc)
+{
+    return vc->is_lf;
+}
+
+void vc_data_destroy(struct vc_data *vc)
+{
+    if (vc == NULL)
+        return ;
+
+    if (vc->vc_screenbuf)
+        free(vc->vc_screenbuf);
+
+    /* vc->vc_translate is static array, no free */
+
+    /*
+    if (vc->uni_pagedict_loc)
+        free(vc->uni_pagedict_loc);
+    */
+
+    if (vc->vc_uni_lines)
+        free(vc->vc_uni_lines);
+
+    free(vc);
 }

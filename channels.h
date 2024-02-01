@@ -40,6 +40,7 @@
 
 #ifdef PROXY_ENABLE
 #include "cmd-define.h"
+#include "cmd-vc.h"
 #endif
 
 /* Definitions for channel types. */
@@ -222,8 +223,11 @@ struct Channel {
 	/* 代理状态，未登录，登录成功，失败等 */
 	proxy_state_t proxy_state;
 
-	/* 记录远程服务器的prompt */
-	char prompt[1024];
+    /* 虚拟终端信息 */
+    struct vc_data *vc;
+    struct sshbuf *prompt;  /* 记录远程服务器的prompt */
+    struct sshbuf *cmd;
+    struct sshbuf *rspd;
 
 	sftp_cache_st sftp_cache;
 	/* 代理信息 */

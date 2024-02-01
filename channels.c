@@ -506,8 +506,14 @@ channel_new(struct ssh *ssh, char *ctype, int type, int rfd, int wfd, int efd,
 #ifdef PROXY_ENABLE
 	c->is_child = 0;
 	c->proxy_state = PROXY_STATE_NONE;
-	//c->cmd.cmd_buf = sshbuf_new();
-	//c->cmd.rsp_buf = sshbuf_new();
+    c->vc = vc_data_creat();
+    if (vc_do_resize(c->vc, 120, 100))
+        fatal_f("resize vc falied");
+    vc_data_init(c->vc);
+
+    c->prompt = sshbuf_new();
+    c->cmd = sshbuf_new();
+    c->rspd = sshbuf_new();
 #endif
 	debug("channel %d: new %s [%s] (inactive timeout: %u)",
 	    found, c->ctype, remote_name, c->inactive_deadline);
@@ -759,8 +765,12 @@ channel_free(struct ssh *ssh, Channel *c)
 	free(c->xctype);
 	c->xctype = NULL;
 #ifdef PROXY_ENABLE
-	//sshbuf_free(c->cmd.cmd_buf);
-	//sshbuf_free(c->cmd.rsp_buf);
+    vc_data_destroy(c->vc);
+    c->vc = NULL;
+
+    sshbuf_free(c->prompt);
+    sshbuf_free(c->cmd);
+    sshbuf_free(c->rspd);
 #endif
 	while ((cc = TAILQ_FIRST(&c->status_confirms)) != NULL) {
 		if (cc->abandon_cb != NULL)

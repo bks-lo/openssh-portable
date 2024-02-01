@@ -105,8 +105,11 @@ struct vc_data
 	unsigned int	vc_can_do_color	: 1;
 	unsigned int	vc_report_mouse : 2;
     unsigned int    bracketed_paste : 1;
+    unsigned int    is_bottom : 1;      /* y is bottom */
+    unsigned int    is_lf : 1;
+    unsigned int    is_cr : 1;          /* 17 */
+
 	unsigned char	vc_utf		: 1;	/* Unicode UTF-8 encoding */
-    unsigned char	is_bottom		: 1;	/* y is bottom */
 	unsigned char	vc_utf_count;
 	int	            vc_utf_char;
 	//DECLARE_BITMAP(vc_tab_stop, VC_TABSTOPS_COUNT);	/* Tab stops. 256 columns. */
@@ -120,9 +123,6 @@ struct vc_data
 	struct uni_pagedict *uni_pagedict;
 	struct uni_pagedict **uni_pagedict_loc; /* [!] Location of uni_pagedict variable for this console */
 	unsigned int    **vc_uni_lines;			/* unicode screen content */
-    unsigned int    *line;
-    struct sshbuf   *buf;
-    struct sshbuf   *prompt;
 	/* additional information is in vt_kern.h */
 };
 
@@ -130,9 +130,15 @@ int conv_uni_to_pc(struct vc_data *conp, long ucs);
 
 int uints_to_sshbuf(unsigned int *ls, int ls_len, struct sshbuf *sbuf);
 
+int vc_data_to_sshbuf(struct vc_data *vc, struct sshbuf *sbuf);
+
 int print_uni_line(struct vc_data *vc);
 
 struct vc_data *vc_data_creat();
+
+void vc_data_destroy(struct vc_data *vc);
+
+void reset_terminal(struct vc_data *vc);
 
 void vc_data_init(struct vc_data *vc);
 
@@ -146,8 +152,12 @@ void do_con_trol(struct vc_data *vc, int c);
 
 int do_con_write(struct vc_data *vc, const unsigned char *buf, int count);
 
-void do_cmd_con_trol(struct vc_data *vc, int c);
+int vc_is_cr(struct vc_data *vc);
 
-int do_cmd_con_write(struct vc_data *vc, const unsigned char *buf, int count);
+int vc_is_lf(struct vc_data *vc);
+
+//void do_cmd_con_trol(struct vc_data *vc, int c);
+
+//int do_cmd_con_write(struct vc_data *vc, const unsigned char *buf, int count);
 
 #endif
