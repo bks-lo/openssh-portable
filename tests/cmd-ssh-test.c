@@ -246,6 +246,24 @@ START_TEST(test_do_con_trol_newline)
     compare_sshbuf(1, vce, "abcdefghij");
     compare_sshbuf(2, vce, "0123456789");
 
+}
+END_TEST
+
+START_TEST(test_do_con_trol_120)
+{
+    struct vc_data *vc = vc_data_creat();
+    int ret = vc_do_resize(vc, 120, 10);
+    ck_assert_msg(ret == 0, "ret != 0", ret);
+    ck_assert_msg(vc->vc_cols == 120, "vc->vc_cols = %u", vc->vc_cols);
+
+    vc_data_init(vc);
+    ck_assert_msg(vc->vc_size_row == vc->vc_cols << 1, "vc_size_row = %u, vc_cols = %d", vc->vc_size_row, vc->vc_cols);
+    ck_assert_msg(vc->vc_screenbuf_size == vc->vc_rows * vc->vc_size_row, "vc_screenbuf_size = %u", vc->vc_screenbuf_size);
+
+    unsigned char buf0[] = {"\n\r-bash: 0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789: command not found\n\r"};      // 换行
+    do_con_write(vc, buf0, sizeof(buf0) - 1);
+    compare_sshbuf(1, vce, "-bash: 01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012");
+    compare_sshbuf(2, vce, "34567890123456789: command not found");
 
 }
 END_TEST
@@ -260,6 +278,8 @@ Suite *make_suite(void)
     tcase_add_test(tc, test_do_con_trol_dbmy);
     tcase_add_test(tc, test_do_con_trol_tencent);
     tcase_add_test(tc, test_do_con_trol_newline);
+    tcase_add_test(tc, test_do_con_trol_120);
+
 
 	suite_add_tcase(s, tc);
 	return s;

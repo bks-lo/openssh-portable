@@ -224,7 +224,6 @@ struct Channel {
 
 	/* 记录远程服务器的prompt */
 	char prompt[1024];
-	cmd_t cmd;
 
 	sftp_cache_st sftp_cache;
 	/* 代理信息 */
