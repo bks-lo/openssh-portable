@@ -336,11 +336,14 @@ auth_maxtries_exceeded(struct ssh *ssh)
 	Authctxt *authctxt = (Authctxt *)ssh->authctxt;
 
 	error("maximum authentication attempts exceeded for "
-	    "%s%.100s from %.200s port %d ssh2",
+	    "%s%.100s from %.200s port %d ssh2. attempt:%d, failures:%d, max_authtries:%d",
 	    authctxt->valid ? "" : "invalid user ",
 	    authctxt->user,
 	    ssh_remote_ipaddr(ssh),
-	    ssh_remote_port(ssh));
+	    ssh_remote_port(ssh),
+        authctxt->attempt,
+        authctxt->failures,
+        options.max_authtries);
 	ssh_packet_disconnect(ssh, "Too many authentication failures");
 	/* NOTREACHED */
 }

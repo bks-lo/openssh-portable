@@ -232,7 +232,7 @@ int login_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
     }
 
     if (strncasecmp(buf, CONST_STR_N("Last")) == 0) {
-        c->proxy_state = PROXY_STATE_LOGIN_OK;
+        c->proxy_state = PROXY_STATE_LOGIN_PROMPT;
         debug_p("login success");
     } else if (strncasecmp(buf, CONST_STR_N("Permission")) == 0) {
         c->proxy_state = PROXY_STATE_LOGIN_FAILED;
@@ -294,7 +294,7 @@ int login_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 
         for (i = 0; i < lrok_num; ++i) {
             if (strncasecmp(buf + loop, lrok_arr[i], strlen(lrok_arr[i])) == 0) {
-                c->proxy_state = PROXY_STATE_LOGIN_OK;
+                c->proxy_state = PROXY_STATE_LOGIN_PROMPT;
                 debug_p("login success 1");
                 break;
             }
@@ -341,7 +341,7 @@ int login_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
     if (strncasecmp(s_pwd, "password", sizeof("password") - 1) == 0) {
         write(c->wfd, pinfo->password, strlen(pinfo->password));
         write(c->wfd, "\n", 1);
-        c->proxy_state = PROXY_STATE_LOGIN_OK;
+        c->proxy_state = PROXY_STATE_LOGIN_PROMPT;
         return 0;
     }
 

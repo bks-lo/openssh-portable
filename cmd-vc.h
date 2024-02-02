@@ -148,9 +148,11 @@ void gotoxy(struct vc_data *vc, int new_x, int new_y);
 
 bool vc_is_control(struct vc_data *vc, int tc, int c);
 
-void do_con_trol(struct vc_data *vc, int c);
+void do_rqst_con_trol(struct vc_data *vc, int c);
+void do_rspd_con_trol(struct vc_data *vc, int c);
 
-int do_con_write(struct vc_data *vc, const unsigned char *buf, int count);
+int do_rqst_con_write(struct vc_data *vc, const unsigned char *buf, int count);
+int do_rspd_con_write(struct vc_data *vc, const unsigned char *buf, int count);
 
 int vc_is_cr(struct vc_data *vc);
 

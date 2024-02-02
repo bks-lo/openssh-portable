@@ -629,6 +629,10 @@ tests/cmd-ssh-test: $(srcdir)/tests/cmd-ssh-test.c $(LIBSSH_C_FILE) $(SSHD_PROXY
 	$(CC) -o $@ $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -DPROXY_ENABLE -DPROXY_DEBUG -DUNITTEST_ENABLE -DUNITTEST_CMD_SSH \
 	 $(SSHD_PROXY_C_FILE) $(SSHD_C_FILE) $(LIBSSH_C_FILE) -lopenbsd-compat -lcheck $(SSHDLIBS) $(LIBS) $(GSSLIBS) $(K5LIBS) $(CHANNELLIBS)
 
+tests/cmd-vc-test: $(srcdir)/tests/cmd-vc-test.c $(LIBSSH_C_FILE) $(SSHD_PROXY_C_FILE) $(LIBCOMPAT) $(SSHD_C_FILE) Makefile.in
+	$(CC) -o $@ $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -DPROXY_ENABLE -DPROXY_DEBUG -DUNITTEST_ENABLE -DUNITTEST_CMD_VC \
+	 $(SSHD_PROXY_C_FILE) $(SSHD_C_FILE) $(LIBSSH_C_FILE) -lopenbsd-compat -lcheck $(SSHDLIBS) $(LIBS) $(GSSLIBS) $(K5LIBS) $(CHANNELLIBS)
+
 
 regress-prep:
 	$(MKDIR_P) `pwd`/regress/unittests/test_helper

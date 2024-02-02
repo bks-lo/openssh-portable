@@ -109,7 +109,7 @@ PubkeyAuthentication    no
 
 # override default of no subsystems
 Subsystem	sftp	/home/xiaoke/openssh-portable/sftp-server
-maxauthtries    1
+# maxauthtries    6
 # Example of overriding settings on a per-user basis
 #Match User anoncvs
 #	X11Forwarding no
