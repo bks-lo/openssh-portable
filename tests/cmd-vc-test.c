@@ -53,6 +53,7 @@ START_TEST(test_do_con_trol)
     do_rspd_con_write(vc, buf4, sizeof(buf4));
     compare_sshbuf(0, vce, "cd /home/xiaoke");
 
+    vc_data_destroy(vc);
 }
 END_TEST
 
@@ -75,6 +76,7 @@ START_TEST(test_conv_uni_to_pc)
     c = 0x27;
     cc = conv_uni_to_pc(vc, c);
     ck_assert_msg(cc == c, "cc[%c] != c", cc);
+    vc_data_destroy(vc);
 }
 END_TEST
 
@@ -89,7 +91,7 @@ START_TEST(test_do_con_trol_dbmy)
     ck_assert_msg(vc->vc_size_row == vc->vc_cols << 1, "vc_size_row = %u, vc_cols = %d", vc->vc_size_row, vc->vc_cols);
     ck_assert_msg(vc->vc_screenbuf_size == vc->vc_rows * vc->vc_size_row, "vc_screenbuf_size = %u", vc->vc_screenbuf_size);
 
-    unsigned char buf1[] = {0x72, 0x6f, 0x6f, 0x74, 0x40, 0x66, 0x6f, 0x72, 0x74, 0x3a, 0x7e, 0x23, 0x20};      // root@for t:~#
+    unsigned char buf1[] = {0x72, 0x6f, 0x6f, 0x74, 0x40, 0x66, 0x6f, 0x72, 0x74, 0x3a, 0x7e, 0x23, 0x20};      // root@fort:~#
     do_rspd_con_write(vc, buf1, sizeof(buf1));
     compare_sshbuf(0, vce, "root@fort:~# ");
 
@@ -147,7 +149,7 @@ START_TEST(test_do_con_trol_dbmy)
     };
     do_rspd_con_write(vc, buf7, sizeof(buf7));
     compare_sshbuf(0, vce, "root@fort:~# cd  /home/xiaoke/dbproxy/openssh-portable/");
-
+    vc_data_destroy(vc);
 }
 END_TEST
 
@@ -237,6 +239,7 @@ START_TEST(test_do_con_trol_tencent)
     };      // cat: /boot/configaaaa: 没有那个文件或目录    gb2312
     do_rspd_con_write(vc, buf7, sizeof(buf7));
     compare_n_sshbuf(1, vce, "cat: /boot/configaaaa: ");
+    vc_data_destroy(vc);
 
 }
 END_TEST
@@ -271,6 +274,7 @@ START_TEST(test_do_con_trol_newline)
     compare_sshbuf(0, vce, "0123456789");
     compare_sshbuf(1, vce, "abcdefghij");
     compare_sshbuf(2, vce, "0123456789");
+    vc_data_destroy(vc);
 
 }
 END_TEST
@@ -286,10 +290,17 @@ START_TEST(test_do_con_trol_120)
     ck_assert_msg(vc->vc_size_row == vc->vc_cols << 1, "vc_size_row = %u, vc_cols = %d", vc->vc_size_row, vc->vc_cols);
     ck_assert_msg(vc->vc_screenbuf_size == vc->vc_rows * vc->vc_size_row, "vc_screenbuf_size = %u", vc->vc_screenbuf_size);
 
-    unsigned char buf0[] = {"\n\r-bash: 0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789: command not found\n\r"};      // 换行
+    unsigned char buf0[] = {"\r\n-bash: 0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789: command not found\r\n"};      // 换行
     do_rspd_con_write(vc, buf0, sizeof(buf0) - 1);
     compare_sshbuf(1, vce, "-bash: 01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012");
     compare_sshbuf(2, vce, "34567890123456789: command not found");
+
+    struct sshbuf *sbuf = sshbuf_new();
+    vc_data_to_sshbuf(vc, sbuf);
+    ck_assert_msg(strcmp(sshbuf_ptr(sbuf), "\n-bash: 0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789: command not found\n") == 0, "error");
+
+    sshbuf_free(sbuf);
+    vc_data_destroy(vc);
 
 }
 END_TEST
@@ -321,6 +332,7 @@ START_TEST(test_do_con_trol_request)
     compare_sshbuf(1, vce, "echo \"hehe\"");
     compare_sshbuf(2, vce, "echo \"aeae\"");
     compare_sshbuf(3, vce, "echo \"ahah\"");
+    vc_data_destroy(vc);
 }
 END_TEST
 
@@ -350,7 +362,103 @@ START_TEST(test_do_con_trol_ctrl_R)
         0x68, 0x22, 0x08, 0x08, 0x08
     };      //  ...a': echo "ahah"...
     do_rspd_con_write(vc, buf2, sizeof(buf2));
-    compare_sshbuf(0, vce, "root@fort:~# ");
+    compare_sshbuf(0, vce, "(reverse-i-search)`a': echo \"ahah\"");
+}
+END_TEST
+
+START_TEST(test_do_con_trol_ctrl_dirty)
+{
+    struct vc_data *vc = vc_data_creat();
+    int ret = vc_do_resize(vc, 120, 10);
+    ck_assert_msg(ret == 0, "ret != 0", ret);
+    ck_assert_msg(vc->vc_cols == 120, "vc->vc_cols = %u", vc->vc_cols);
+
+    vc_data_init(vc);
+    ck_assert_msg(vc->vc_size_row == vc->vc_cols << 1, "vc_size_row = %u, vc_cols = %d", vc->vc_size_row, vc->vc_cols);
+    ck_assert_msg(vc->vc_screenbuf_size == vc->vc_rows * vc->vc_size_row, "vc_screenbuf_size = %u", vc->vc_screenbuf_size);
+
+    unsigned char buf0[] = {"abcdefghijklmnopqrstuvwxyz"};
+    do_rspd_con_write(vc, buf0, sizeof(buf0) - 1);
+    compare_sshbuf(0, vce, "abcdefghijklmnopqrstuvwxyz");
+
+    unsigned char buf1[] = {"\r123456789"};
+    do_rspd_con_write(vc, buf1, sizeof(buf1) - 1);
+    compare_sshbuf(0, vce, "123456789jklmnopqrstuvwxyz");
+
+    unsigned char buf2[] = {'\r', '1', '2', '3', '4', '5', '6', '7', '8', '9', 0x1b, '[', 'K'};
+    do_rspd_con_write(vc, buf2, sizeof(buf2));
+    compare_sshbuf(0, vce, "123456789                                                                                                               ");
+}
+END_TEST
+
+START_TEST(test_do_con_trol_ctrl_dirty2)
+{
+    struct vc_data *vc = vc_data_creat();
+    int ret = vc_do_resize(vc, 120, 10);
+    ck_assert_msg(ret == 0, "ret != 0", ret);
+    ck_assert_msg(vc->vc_cols == 120, "vc->vc_cols = %u", vc->vc_cols);
+
+    vc_data_init(vc);
+    ck_assert_msg(vc->vc_size_row == vc->vc_cols << 1, "vc_size_row = %u, vc_cols = %d", vc->vc_size_row, vc->vc_cols);
+    ck_assert_msg(vc->vc_screenbuf_size == vc->vc_rows * vc->vc_size_row, "vc_screenbuf_size = %u", vc->vc_screenbuf_size);
+
+    unsigned char buf0_1[] = {
+        0x0d, 0x0a
+    };
+    do_rspd_con_write(vc, buf0_1, sizeof(buf0_1));
+    compare_sshbuf(0, vce, "");
+
+    //Last login: Sun Feb  4 13:52:04 2024 from 113.143.196.97...
+    unsigned char buf0[] = {
+        0x4c, 0x61, 0x73, 0x74, 0x20, 0x6c, 0x6f, 0x67, 0x69, 0x6e, 0x3a, 0x20, 0x53, 0x75, 0x6e, 0x20,
+        0x46, 0x65, 0x62, 0x20, 0x20, 0x34, 0x20, 0x31, 0x33, 0x3a, 0x35, 0x32, 0x3a, 0x30, 0x34, 0x20,
+        0x32, 0x30, 0x32, 0x34, 0x20, 0x66, 0x72, 0x6f, 0x6d, 0x20, 0x31, 0x31, 0x33, 0x2e, 0x31, 0x34,
+        0x33, 0x2e, 0x31, 0x39, 0x36, 0x2e, 0x39, 0x37, 0x0d, 0x0d, 0x0a
+    };
+    do_rspd_con_write(vc, buf0, sizeof(buf0));
+    compare_sshbuf(1, vce, "Last login: Sun Feb  4 13:52:04 2024 from 113.143.196.97");
+
+
+    //[root@VM-4-7-centos ~]#
+    //[root@VM-4-7-centos ~]#
+    unsigned char buf1[] = {
+        0x1b, 0x5b, 0x3f, 0x32, 0x30, 0x30, 0x34, 0x68, 0x5b, 0x72, 0x6f, 0x6f, 0x74, 0x40, 0x56, 0x4d,
+        0x2d, 0x34, 0x2d, 0x37, 0x2d, 0x63, 0x65, 0x6e, 0x74, 0x6f, 0x73, 0x20, 0x7e, 0x5d, 0x23, 0x20,
+        0x0d, 0x0a, 0x1b, 0x5b, 0x3f, 0x32, 0x30, 0x30, 0x34, 0x6c, 0x0d, 0x1b, 0x5b, 0x3f, 0x32, 0x30,
+        0x30, 0x34, 0x68, 0x5b, 0x72, 0x6f, 0x6f, 0x74, 0x40, 0x56, 0x4d, 0x2d, 0x34, 0x2d, 0x37, 0x2d,
+        0x63, 0x65, 0x6e, 0x74, 0x6f, 0x73, 0x20, 0x7e, 0x5d, 0x23, 0x20
+    };
+    do_rspd_con_write(vc, buf1, sizeof(buf1));
+    compare_sshbuf(2, vce, "[root@VM-4-7-centos ~]# ");
+    compare_sshbuf(3, vce, "[root@VM-4-7-centos ~]# ");
+
+
+    reset_terminal(vc);
+    vc_uniscr_memset(vc);
+
+    unsigned char buf2[] = {
+        0x1b, 0x5b, 0x37, 0x6d, 0x65, 0x63, 0x68, 0x6f, 0x20, 0x22, 0x68, 0x61, 0x68, 0x61, 0x22, 0x1b,
+        0x5b, 0x32, 0x37, 0x6d, 0x0d, 0x0a, 0x0d, 0x1b, 0x5b, 0x37, 0x6d, 0x65, 0x63, 0x68, 0x6f, 0x20,
+        0x22, 0x68, 0x65, 0x68, 0x65, 0x22, 0x1b, 0x5b, 0x32, 0x37, 0x6d, 0x0d, 0x0a, 0x0d, 0x1b, 0x5b,
+        0x37, 0x6d, 0x65, 0x63, 0x68, 0x6f, 0x20, 0x22, 0x61, 0x65, 0x61, 0x65, 0x22, 0x1b, 0x5b, 0x32,
+        0x37, 0x6d, 0x0d, 0x0a, 0x0d, 0x1b, 0x5b, 0x37, 0x6d, 0x65, 0x63, 0x68, 0x6f, 0x20, 0x22, 0x61,
+        0x68, 0x61, 0x68, 0x22, 0x1b, 0x5b, 0x32, 0x37, 0x6d, 0x0d, 0x0a, 0x0d
+    };
+    do_rspd_con_write(vc, buf2, sizeof(buf2));
+    compare_sshbuf(0, vce, "echo \"haha\"");
+    compare_sshbuf(1, vce, "echo \"hehe\"");
+    compare_sshbuf(2, vce, "echo \"aeae\"");
+    compare_sshbuf(3, vce, "echo \"ahah\"");
+
+    struct sshbuf *sbuf = sshbuf_new();
+    vc_data_to_sshbuf(vc, sbuf);
+    ck_assert_msg(strcmp(sshbuf_ptr(sbuf), "echo \"haha\"\necho \"hehe\"\necho \"aeae\"\necho \"ahah\"\n") == 0, "multi line format invalid");
+
+
+    sshbuf_free(sbuf);
+    vc_data_destroy(vc);
+
+
 }
 END_TEST
 
@@ -367,6 +475,8 @@ Suite *make_suite(void)
     tcase_add_test(tc, test_do_con_trol_120);
     tcase_add_test(tc, test_do_con_trol_request);
     tcase_add_test(tc, test_do_con_trol_ctrl_R);
+    tcase_add_test(tc, test_do_con_trol_ctrl_dirty);
+    tcase_add_test(tc, test_do_con_trol_ctrl_dirty2);
 
 	suite_add_tcase(s, tc);
 	return s;

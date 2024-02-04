@@ -376,14 +376,16 @@ int uints_to_sshbuf(unsigned int *ls, int ls_len, struct sshbuf *sbuf)
     for (; i < ls_len; ++i) {
         j = uint_to_char(ls[i], tb, sizeof(tb));
 
-        if (j == 0) {
-            return  i;
-        }
+        if (j == 0)
+            return i;
 
         sshbuf_put(sbuf, tb, j);
+
+        #if 0
         if (j == 1 && tb[0] == '\n') {
                 return i+1;
         }
+        #endif
     }
 
     // char nul = 0;
@@ -402,6 +404,9 @@ int vc_data_to_sshbuf(struct vc_data *vc, struct sshbuf *sbuf)
         i = uints_to_sshbuf(vc->vc_uni_lines[j], vc->vc_cols, sbuf);
         //sshbuf_put_u8(sbuf, '\n');
         debug_p("j=%d, i=%d", j, i);
+        if (i != vc->vc_cols) {
+            sshbuf_put_u8(sbuf, '\n');
+        }
     }
 
     i = uints_to_sshbuf(vc->vc_uni_lines[j], vc->vc_cols, sbuf);
@@ -411,7 +416,7 @@ int vc_data_to_sshbuf(struct vc_data *vc, struct sshbuf *sbuf)
 
 int print_uni_line(struct vc_data *vc)
 {
-    return 0;
+    //return 0;
 
     unsigned int x = vc->state.x;
     unsigned int y = vc->state.y;
@@ -489,6 +494,19 @@ static unsigned int **vc_uniscr_alloc(unsigned int cols, unsigned int rows)
 	}
 
 	return uni_lines;
+}
+
+void vc_uniscr_memset(struct vc_data *vc)
+{
+    unsigned int **uni_lines = vc->vc_uni_lines;
+    if (!uni_lines)
+        return ;
+
+    unsigned int col_size = vc->vc_cols * sizeof(**uni_lines);
+    unsigned int memsize = col_size * vc->vc_rows;
+    void *p = uni_lines + vc->vc_rows;
+    memset(p, 0, memsize);
+    return ;
 }
 
 static void vc_uniscr_free(unsigned int **uni_lines)
@@ -1595,7 +1613,7 @@ void do_rspd_con_trol(struct vc_data *vc, int c)
 		// return;
 	case 13:
         // debug_p("\\r");
-        vc_uniscr_putc(vc, 0);
+        //vc_uniscr_putc(vc, 0);
 		cr(vc);
         vc->is_cr = 1;
 		return;
@@ -2001,7 +2019,7 @@ void do_rqst_con_trol(struct vc_data *vc, int c)
 		return;
     case 13:
         //debug_p("y=%d, x=%d", vc->state.y, vc->state.x);
-        vc_uniscr_putc(vc, '\n');
+        //vc_uniscr_putc(vc, '\n');
 		cr(vc);
         vc->is_cr = 1;
 		// fallthrough

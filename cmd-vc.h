@@ -142,6 +142,8 @@ void reset_terminal(struct vc_data *vc);
 
 void vc_data_init(struct vc_data *vc);
 
+void vc_uniscr_memset(struct vc_data *vc);
+
 int vc_do_resize(struct vc_data *vc, unsigned int cols, unsigned int lines);
 
 void gotoxy(struct vc_data *vc, int new_x, int new_y);
