@@ -462,6 +462,84 @@ START_TEST(test_do_con_trol_ctrl_dirty2)
 }
 END_TEST
 
+START_TEST(test_do_con_trol_ctrl_find1)
+{
+    struct vc_data *vc = vc_data_creat();
+    int ret = vc_do_resize(vc, 120, 10);
+    ck_assert_msg(ret == 0, "ret != 0", ret);
+    ck_assert_msg(vc->vc_cols == 120, "vc->vc_cols = %u", vc->vc_cols);
+
+    vc_data_init(vc);
+    ck_assert_msg(vc->vc_size_row == vc->vc_cols << 1, "vc_size_row = %u, vc_cols = %d", vc->vc_size_row, vc->vc_cols);
+    ck_assert_msg(vc->vc_screenbuf_size == vc->vc_rows * vc->vc_size_row, "vc_screenbuf_size = %u", vc->vc_screenbuf_size);
+
+    unsigned char buf0[] = {
+        0x72, 0x6f, 0x6f, 0x74, 0x40, 0x66, 0x6f, 0x72, 0x74, 0x3a, 0x7e, 0x23, 0x20
+    };
+    do_rspd_con_write(vc, buf0, sizeof(buf0));
+    compare_sshbuf(0, vce, "root@fort:~# ");
+
+
+    unsigned char buf1[] = {
+        0x0d, 0x1b, 0x5b, 0x39, 0x40, 0x28, 0x72, 0x65, 0x76, 0x65, 0x72, 0x73, 0x65, 0x2d, 0x69, 0x2d,
+        0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x29, 0x60, 0x27, 0x3a, 0x1b, 0x5b, 0x43
+    };
+    do_rspd_con_write(vc, buf1, sizeof(buf1));
+    compare_sshbuf(0, vce, "(reverse-i-search)`': ");
+
+
+    unsigned char buf2[] = {
+        0x08, 0x08, 0x08, 0x61, 0x27, 0x3a, 0x20, 0x65, 0x63, 0x68, 0x6f, 0x20, 0x22, 0x61, 0x65, 0x61,
+        0x65, 0x22, 0x08, 0x08, 0x08
+    };
+    do_rspd_con_write(vc, buf2, sizeof(buf2));
+    compare_sshbuf(0, vce, "(reverse-i-search)`a': echo \"aeae\"");
+
+    unsigned char buf3[] = {
+        0x07
+    };
+    do_rspd_con_write(vc, buf3, sizeof(buf3));
+    compare_sshbuf(0, vce, "(reverse-i-search)`a': echo \"aeae\"");
+
+    unsigned char buf4[] = {
+        0x08, 0x08, 0x68, 0x61, 0x68, 0x61, 0x22, 0x08, 0x08
+    };
+    do_rspd_con_write(vc, buf4, sizeof(buf4));
+    compare_sshbuf(0, vce, "(reverse-i-search)`a': echo \"haha\"");
+
+    unsigned char buf5[] = {
+        0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x1b, 0x5b, 0x31,
+        0x50, 0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43,
+        0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x1b,
+        0x5b, 0x43, 0x1b, 0x5b, 0x43
+    };
+    do_rspd_con_write(vc, buf5, sizeof(buf5));
+    compare_sshbuf(0, vce, "(reverse-i-search)`': echo \"haha\"");
+
+    unsigned char buf6[] = {
+        0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x62, 0x27, 0x3a, 0x20,
+        0x63, 0x64, 0x2f, 0x68, 0x6f, 0x6d, 0x65, 0x2f, 0x78, 0x69, 0x61, 0x6f, 0x6b, 0x65, 0x2f, 0x6f,
+        0x70, 0x65, 0x6e, 0x73, 0x73, 0x68, 0x2d, 0x70, 0x6f, 0x72, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x08,
+        0x08, 0x08
+    };
+    do_rspd_con_write(vc, buf6, sizeof(buf6));
+    compare_sshbuf(0, vce, "(reverse-i-search)`b': cd/home/xiaoke/openssh-portable");
+
+
+    struct sshbuf *sbuf = sshbuf_new();
+    vc_data_to_sshbuf(vc, sbuf);
+    ck_assert_msg(strcmp(sshbuf_ptr(sbuf), "(reverse-i-search)`b': cd/home/xiaoke/openssh-portable") == 0, "multi line format invalid");
+
+
+    sshbuf_free(sbuf);
+    vc_data_destroy(vc);
+
+    //reset_terminal(vc);
+    //vc_uniscr_memset(vc);
+}
+END_TEST
+
+
 Suite *make_suite(void)
 {
 	Suite *s = suite_create("test");
@@ -477,6 +555,7 @@ Suite *make_suite(void)
     tcase_add_test(tc, test_do_con_trol_ctrl_R);
     tcase_add_test(tc, test_do_con_trol_ctrl_dirty);
     tcase_add_test(tc, test_do_con_trol_ctrl_dirty2);
+    tcase_add_test(tc, test_do_con_trol_ctrl_find1);
 
 	suite_add_tcase(s, tc);
 	return s;
