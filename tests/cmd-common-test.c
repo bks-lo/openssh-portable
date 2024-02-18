@@ -1,5 +1,7 @@
 #include <check.h>
 
+#define STR_LEN(s)  s, sizeof(s) - 1
+
 START_TEST(test_get_simple_file_content)
 {
     debug_p("===============================================get_login_rstr_by_proto"
@@ -103,7 +105,6 @@ END_TEST
 
 START_TEST(test_find_last_word)
 {
-#define STR_LEN(s)  s, sizeof(s) - 1
     const char *ret = NULL;
     int i = 0;
 
@@ -157,6 +158,107 @@ START_TEST(test_find_last_word)
 }
 END_TEST
 
+#define WHITESPACE " \t\r\n"
+
+START_TEST(test_strspn_r)
+{
+    const char *ret = NULL;
+
+    ret = strspn_r("haha: \t", WHITESPACE);
+    ck_assert_msg(*ret == ':', "[%c] != :", *ret);
+
+    ret = strspn_r("\n\r \t", WHITESPACE);
+    ck_assert_msg(ret == NULL, "ret != NULL");
+
+    ret = strspn_r("\n\r \taabbcc", WHITESPACE);
+    ck_assert_msg(*ret == 'c', "[%c] != c", *ret);
+}
+END_TEST
+
+START_TEST(test_strncmp_r)
+{
+    int ret = NULL;
+
+    ret = strncmp_r("haha: \t", STR_LEN(": \t"));
+    ck_assert_msg(ret == 0, "[%d] != 0", ret);
+
+    ret = strncmp_r("haha: ", STR_LEN(": "));
+    ck_assert_msg(ret == 0, "[%d] != 0", ret);
+
+    ret = strncmp_r(": ", STR_LEN(": "));
+    ck_assert_msg(ret == 0, "[%d] != 0", ret);
+
+    ret = strncmp_r(" ", STR_LEN(": "));
+    ck_assert_msg(ret == -1, "[%d] != -1", ret);
+
+    ret = strncmp_r("", STR_LEN(": "));
+    ck_assert_msg(ret == -1, "[%d] != -1", ret);
+
+    ret = strncmp_r(" :", STR_LEN(":"));
+    ck_assert_msg(ret == 0, "[%d] != 0", ret);
+
+    ret = strncmp_r(" :", STR_LEN(""));
+    ck_assert_msg(ret > 0, "[%d] > 0", ret);
+
+    ret = strncmp_r(NULL, STR_LEN(""));
+    ck_assert_msg(ret == -1, "[%d] != -1", ret);
+
+    ret = strncmp_r("aaa", NULL, 100);
+    ck_assert_msg(ret == 1, "[%d] != 1", ret);
+
+    ret = strncmp_r(NULL, NULL, 100);
+    ck_assert_msg(ret == -1, "[%d] != -1", ret);
+}
+END_TEST
+
+
+START_TEST(test_strncasecmp_r)
+{
+    int ret = NULL;
+
+    ret = strncasecmp_r("haha: \t", STR_LEN(": \t"));
+    ck_assert_msg(ret == 0, "[%d] != 0", ret);
+
+    ret = strncasecmp_r("haha: ", STR_LEN(": "));
+    ck_assert_msg(ret == 0, "[%d] != 0", ret);
+
+    ret = strncasecmp_r(": ", STR_LEN(": "));
+    ck_assert_msg(ret == 0, "[%d] != 0", ret);
+
+    ret = strncasecmp_r(" ", STR_LEN(": "));
+    ck_assert_msg(ret == -1, "[%d] != -1", ret);
+
+    ret = strncasecmp_r("", STR_LEN(": "));
+    ck_assert_msg(ret == -1, "[%d] != -1", ret);
+
+    ret = strncasecmp_r(" :", STR_LEN(":"));
+    ck_assert_msg(ret == 0, "[%d] != 0", ret);
+
+    ret = strncasecmp_r(" :", STR_LEN(""));
+    ck_assert_msg(ret > 0, "[%d] > 0", ret);
+
+    ret = strncasecmp_r(NULL, STR_LEN(""));
+    ck_assert_msg(ret == -1, "[%d] != -1", ret);
+
+    ret = strncasecmp_r("aaa", NULL, 100);
+    ck_assert_msg(ret == 1, "[%d] != 1", ret);
+
+    ret = strncasecmp_r(NULL, NULL, 100);
+    ck_assert_msg(ret == -1, "[%d] != -1", ret);
+
+    ret = strncasecmp_r("Is the information correct? [Y/n] ", STR_LEN("? [y/n] "));
+    ck_assert_msg(ret == 0, "[%d] != 0", ret);
+
+    ret = strncasecmp_r("Is the information correct? [Y/n] ", STR_LEN("? [y/N] "));
+    ck_assert_msg(ret == 0, "[%d] != 0", ret);
+
+    ret = strncasecmp_r("Is the information correct? [Y/n] ", STR_LEN("? [Y/n] "));
+    ck_assert_msg(ret == 0, "[%d] != 0", ret);
+
+    ret = strncasecmp_r("Is the information correct? [N/n] ", STR_LEN("? [y/n] "));
+    ck_assert_msg(ret < 0, "[%d] < 0", ret);
+}
+END_TEST
 
 Suite *make_suite(void)
 {
@@ -169,6 +271,10 @@ Suite *make_suite(void)
     tcase_add_test(tc, test_proxy_info);
     tcase_add_test(tc, test_proxy_popen);
     tcase_add_test(tc, test_find_last_word);
+    tcase_add_test(tc, test_strspn_r);
+    tcase_add_test(tc, test_strncmp_r);
+    tcase_add_test(tc, test_strncasecmp_r);
+
 
 	suite_add_tcase(s, tc);
 	return s;

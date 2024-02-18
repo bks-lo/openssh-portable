@@ -15,4 +15,8 @@ int get_proxy_info_by_sid(proxy_info_st *pinfo, char *sid);
 proxy_info_st *proxy_info_init();
 void proxy_info_destroy(proxy_info_st *pinfo);
 
+const char *strspn_r(const char *s1, const char *s2);
+int strncmp_r(const char *s1, const char *s2, int n);
+int strncasecmp_r(const char *s1, const char *s2, int n);
+
 #endif

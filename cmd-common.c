@@ -698,6 +698,102 @@ int proxy_cmd_get(char *cmd, int clen, proxy_info_st *pinfo, const char *command
     return 0;
 }
 
+const char *strspn_r(const char *s1, const char *s2)
+{
+    if (s1 == NULL || s2 == NULL) {
+        return NULL;
+    }
+
+    int i = strlen(s1) - 1;
+    const char *c;
+
+    for (; i >= 0; --i) {
+        for (c = s2; *c; c++) {
+            if (s1[i] == *c)
+                break;
+        }
+
+        if (*c == '\0') {
+            return s1 + i;
+        }
+    }
+
+    return NULL;
+}
+
+int strncmp_r(const char *s1, const char *s2, int n)
+{
+    if (s1 == NULL) {
+        return -1;
+    }
+
+    if (s2 == NULL) {
+        return 1;
+    }
+
+    if (n <= 0) {
+        return 2;
+    }
+
+    int ret = 0;
+    int i1 = strlen(s1) - 1;
+    int i2 = strlen(s2) - 1;
+
+    for (; n > 0 && i1 >= 0 && i2 >= 0; --n) {
+        ret = s1[i1] - s2[i2];
+        if (ret != 0) {
+            return ret;
+        }
+
+        --i1;
+        --i2;
+    }
+
+    if (n == 0)
+        return 0;
+
+    return i1 >= 0 ? 1 : -1;
+}
+
+int strncasecmp_r(const char *s1, const char *s2, int n)
+{
+    if (s1 == NULL) {
+        return -1;
+    }
+
+    if (s2 == NULL) {
+        return 1;
+    }
+
+    if (n <= 0) {
+        return 2;
+    }
+
+    int ret = 0;
+    int i1 = strlen(s1) - 1;
+    int i2 = strlen(s2) - 1;
+    int aA = 'a' - 'A';
+    int Aa = 'A' - 'a';
+
+    for (; n > 0 && i1 >= 0 && i2 >= 0; --n, --i1, --i2) {
+        ret = s1[i1] - s2[i2];
+
+        if (ret != 0) {
+            if (isalpha(s1[i1]) && isalpha(s2[i2]) && (ret == aA || ret == Aa)) {
+                continue;
+            } else {
+                return ret;
+            }
+        }
+    }
+
+    if (n == 0)
+        return 0;
+
+    return i1 >= 0 ? 1 : -1;
+}
+
+
 #ifdef UNITTEST_CMD_COMMON
 #include "./tests/cmd-common-test.c"
 #endif

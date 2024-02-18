@@ -22,6 +22,7 @@ typedef enum proxy_state_t
     PROXY_STATE_CMD_ECHO_START,
     PROXY_STATE_CMD_ECHO,
     PROXY_STATE_RSPD,
+    PROXY_STATE_RSPD_INPUT,
     PROXY_STATE_END
 } proxy_state_t;
 

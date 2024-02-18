@@ -12,6 +12,8 @@
 #include "cmd-vc.h"
 #include "xmalloc.h"
 
+#define WHITESPACE " \t\r\n"
+
 static int reset_cmd_status(Channel *c)
 {
     sshbuf_reset(c->cmd);
@@ -71,13 +73,34 @@ static int rfd_rspd_handle(struct ssh *ssh, Channel *c, const char *buf, int len
     return do_rspd_con_write(c->vc, buf, len);
 }
 
-#define SSH_PROXY_DIRECT    1
+#define SSH_PROXY_DIRECT    0
+
+static int need_input(Channel *c)
+{
+    //TODO: 将输入标记通过配置文件加载到 Channel 中，然后循环匹配
+    const char *arr[] = {
+        ": ",
+        "? [y/n] ",
+    };
+
+    int i = 0;
+    const u_char *ptr = sshbuf_ptr(c->rspd);
+    for (; i < sizeof(arr)/sizeof(arr[0]); ++i) {
+        if (strncasecmp_r((const char *)ptr, arr[i], strlen(arr[i])) == 0) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 
 int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 {
 #if SSH_PROXY_DIRECT
     return 0;
 #endif
+
     debug_p("cmd state=%d", c->proxy_state);
     switch (c->proxy_state) {
     case PROXY_STATE_LOGIN_PROMPT:
@@ -116,8 +139,18 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         break;
     case PROXY_STATE_RSPD:
         proxy_rspd_end(c);
-        c->proxy_state = PROXY_STATE_CMD_START;
-        goto proxy_state_cmd_start;
+
+        if (!need_input(c)) {
+            c->proxy_state = PROXY_STATE_CMD_START;
+            goto proxy_state_cmd_start;
+        }
+
+        c->proxy_state = PROXY_STATE_RSPD_INPUT;
+    case PROXY_STATE_RSPD_INPUT:
+        if (buf[len - 1] == 0x0d) {
+            c->proxy_state = PROXY_STATE_RSPD;
+        }
+        break;
     default:
         fatal_f("state = %d, invalid", c->proxy_state);
         break;
@@ -161,8 +194,14 @@ int cmd_ssh_rfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         reset_rspd_status(c);
         // fallthrough
     case PROXY_STATE_RSPD:
+    case PROXY_STATE_RSPD_INPUT:
         rfd_rspd_handle(ssh, c, buf, len);
         break;
+    /*
+    case PROXY_STATE_RSPD_INPUT:
+        rfd_rspd_handle(ssh, c, buf, len);
+        break;
+    */
     case PROXY_STATE_CMD_START:
         /* Not to do anything */
         break;
