@@ -515,6 +515,10 @@ void prinf_orig(const char *fmt, ...)
 	(void)write(STDOUT_FILENO, msgbuf, strlen(msgbuf));
 }
 
+#define PKT_PRINT_UN    0
+#define PKT_PRINT_16    1
+#define PKT_PRINT_10    0
+
 #define PKT_PRINT(fmt, ...)   prinf_orig(fmt, ##__VA_ARGS__)
 //hexdump
 void pr_hexdump(const char* p, int len)
@@ -531,7 +535,7 @@ void pr_hexdump(const char* p, int len)
     offset = 0;
 	PKT_PRINT("(len=%d)(pid=%d)\n", len, getpid());
     while (offset < len) {
-        PKT_PRINT("%04x ", offset);
+        PKT_PRINT("/*%04x*/ ", offset);
         thisline = len - offset;
         if (thisline > 16) {
             thisline = 16;
@@ -542,16 +546,30 @@ void pr_hexdump(const char* p, int len)
                 PKT_PRINT(" ");
             }
 
+            #if PKT_PRINT_UN
             PKT_PRINT("%02x ", (unsigned char)line[i]);
+            #elif PKT_PRINT_16
+            PKT_PRINT("0x%02x, ", (unsigned char)line[i]);
+            #else
+            PKT_PRINT("%3u, ", (unsigned char)line[i]);
+            #endif
         }
 
         for (; i < 16; i++) {
 			if (i == 8) {
                 PKT_PRINT(" ");
             }
+
+            #if PKT_PRINT_UN
             PKT_PRINT("   ");
+            #elif PKT_PRINT_16
+            PKT_PRINT("      ");
+            #else
+            PKT_PRINT("     ");
+            #endif
         }
 
+        PKT_PRINT("//");
         for (i = 0; i < thisline; i++) {
             if (i == 8) {
                 PKT_PRINT(" ");
