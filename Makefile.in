@@ -603,15 +603,19 @@ uninstall:	uninstall-lr
 	-rm -f $(DESTDIR)$(mandir)/$(mansubdir)8/ssh-pkcs11-helper.8
 	-rm -f $(DESTDIR)$(mandir)/$(mansubdir)8/ssh-sk-helper.8
 
-unittests: tests/cmd-common-test tests/utf8-test tests/cmd-sftp-test tests/cmd-ssh-test
+unittests: tests/cmd-common-test tests/utf8-test tests/cmd-sftp-test tests/cmd-ssh-test tests/cmd-vc-test
 	./tests/cmd-common-test
 	./tests/utf8-test
 	./tests/cmd-sftp-test
+	./tests/cmd-ssh-test
+	./tests/cmd-vc-test
 
 unittests-clean:
 	rm -f tests/cmd-common-test
 	rm -f tests/utf8-test
 	rm -f tests/cmd-sftp-test
+	rm -f tests/cmd-ssh-test
+	rm -f tests/cmd-vc-test
 
 tests/cmd-common-test: $(srcdir)/tests/cmd-common-test.c  $(SSHD_PROXY_C_FILE) $(LIBSSH_C_FILE) $(LIBCOMPAT) $(SSHD_C_FILE) Makefile.in
 	$(CC) -o $@ $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -DPROXY_ENABLE -DPROXY_DEBUG -DUNITTEST_ENABLE -DUNITTEST_CMD_COMMON \

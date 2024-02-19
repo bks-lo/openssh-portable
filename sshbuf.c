@@ -155,6 +155,26 @@ sshbuf_fromb(struct sshbuf *buf)
 	return ret;
 }
 
+/* Deep copy from other sshbuf */
+struct sshbuf *sshbuf_fromd(struct sshbuf *buf)
+{
+    struct sshbuf *ret;
+
+    if (sshbuf_check_sanity(buf) != 0)
+        return NULL;
+
+    if ((ret = sshbuf_new()) == NULL)
+        return NULL;
+
+    if (sshbuf_put(ret, sshbuf_ptr(buf), sshbuf_len(buf)) != 0) {
+        sshbuf_free(ret);
+        return NULL;
+    }
+
+    return ret;
+}
+
+
 void
 sshbuf_free(struct sshbuf *buf)
 {

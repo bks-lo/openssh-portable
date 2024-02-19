@@ -14,32 +14,34 @@
 
 #define WHITESPACE " \t\r\n"
 
-static int reset_cmd_status(Channel *c)
+static void reset_vc_status(struct vc_data *vc)
+{
+    reset_terminal(vc);
+    vc_uniscr_memset(vc);
+}
+
+/* 一个新命令开始审计，清理请求和响应缓存 */
+static void reset_cmd_status(Channel *c)
 {
     sshbuf_reset(c->cmd);
-    reset_terminal(c->vc);
-    vc_uniscr_memset(c->vc);
-}
-
-static int reset_rspd_status(Channel *c)
-{
     sshbuf_reset(c->rspd);
-    reset_terminal(c->vc);
-    vc_uniscr_memset(c->vc);
+    reset_vc_status(c->vc);
 }
 
-static int proxy_cmd_end(Channel *c)
+static void proxy_cmd_end(Channel *c)
 {
     vc_data_to_sshbuf(c->vc, c->cmd);
     print_uni_line(c->vc);
     debug_p("cmd[%d]>>%s", sshbuf_len(c->cmd), sshbuf_ptr(c->cmd));
+    reset_vc_status(c->vc);
 }
 
-static int proxy_rspd_end(Channel *c)
+static void proxy_rspd_end(Channel *c)
 {
     vc_data_to_sshbuf(c->vc, c->rspd);
     print_uni_line(c->vc);
-    debug_p("rspd[%d]>>%s", sshbuf_len(c->rspd), sshbuf_ptr(c->rspd));
+    debug_p("rspd[%lu]>>%s", sshbuf_len(c->rspd), sshbuf_ptr(c->rspd));
+    reset_vc_status(c->vc);
 }
 
 static int set_prompt(Channel *c, struct vc_data *vc)
@@ -101,7 +103,7 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
     return 0;
 #endif
 
-    debug_p("cmd state=%d", c->proxy_state);
+    debug_p("cmd start state=%d", c->proxy_state);
     switch (c->proxy_state) {
     case PROXY_STATE_LOGIN_PROMPT:
         /* 为了让rfd退出 PROXY_STATE_LOGIN_PROMPT 状态，避免一直记录prompt */
@@ -134,12 +136,10 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         if (len == 1 && buf[0] == 0x0d) {
             proxy_cmd_end(c);
             c->proxy_state = PROXY_STATE_RSPD;
-            reset_rspd_status(c);
         }
         break;
     case PROXY_STATE_RSPD:
         proxy_rspd_end(c);
-
         if (!need_input(c)) {
             c->proxy_state = PROXY_STATE_CMD_START;
             goto proxy_state_cmd_start;
@@ -156,7 +156,7 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         break;
     }
 
-
+    debug_p("cmd end  state=%d", c->proxy_state);
     return 0;
 }
 
@@ -165,7 +165,7 @@ int cmd_ssh_rfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 #if SSH_PROXY_DIRECT
     return 0;
 #endif
-    debug_p("rspd state=%d", c->proxy_state);
+    debug_p("rspd start state=%d", c->proxy_state);
     switch (c->proxy_state) {
     case PROXY_STATE_LOGIN:
         login_handle(ssh, c, buf, len);
@@ -191,7 +191,6 @@ int cmd_ssh_rfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 
         proxy_cmd_end(c);
         c->proxy_state = PROXY_STATE_RSPD;
-        reset_rspd_status(c);
         // fallthrough
     case PROXY_STATE_RSPD:
     case PROXY_STATE_RSPD_INPUT:
@@ -210,6 +209,7 @@ int cmd_ssh_rfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         break;
     }
 
+    debug_p("rspd end  state=%d", c->proxy_state);
     return 0;
 }
 

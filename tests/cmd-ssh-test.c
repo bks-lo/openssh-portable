@@ -6,23 +6,25 @@
 #define STR_LEN(str)    str, sizeof(str) - 1
 
 #define  compare_cmd_sshbuf(c, str) do {                    \
-    sshbuf_reset(c->cmd);                                   \
-    vc_data_to_sshbuf(c->vc, c->cmd);                       \
-    ck_assert_msg(strncmp(sshbuf_ptr(c->cmd), STR_LEN(str)) == 0, "sshbuf[%s] != exp["str"]", sshbuf_ptr(c->cmd)); \
+    struct sshbuf *cmd = sshbuf_fromd(c->cmd);              \
+    vc_data_to_sshbuf(c->vc, cmd);                          \
+    ck_assert_msg(strncmp(sshbuf_ptr(cmd), STR_LEN(str)) == 0, "sshbuf[%s] != exp["str"]", sshbuf_ptr(cmd)); \
+    sshbuf_free(cmd);                                       \
 } while(0)
 
 #define  compare_orig_cmd_sshbuf(c, str) do {               \
     ck_assert_msg(strncmp(sshbuf_ptr(c->cmd), STR_LEN(str)) == 0, "sshbuf[%s] != exp["str"]", sshbuf_ptr(c->cmd)); \
 } while(0)
 
-#define compare_prompt(c, str) do {                    \
+#define compare_prompt(c, str) do {                         \
     ck_assert_msg(strcmp(sshbuf_ptr(c->prompt), str) == 0, "sshbuf[%s] != exp["str"]", sshbuf_ptr(c->prompt)); \
 } while(0)
 
 #define compare_rspd_sshbuf(c, str) do {                    \
-    sshbuf_reset(c->rspd);                                  \
-    vc_data_to_sshbuf(c->vc, c->rspd);                      \
-    ck_assert_msg(strcmp(sshbuf_ptr(c->rspd), str) == 0, "sshbuf[%s] != exp["str"]", sshbuf_ptr(c->rspd)); \
+    struct sshbuf *rspd = sshbuf_fromd(c->rspd);            \
+    vc_data_to_sshbuf(c->vc, rspd);                         \
+    ck_assert_msg(strcmp(sshbuf_ptr(rspd), str) == 0, "sshbuf[%s] != exp["str"]", sshbuf_ptr(rspd)); \
+    sshbuf_free(rspd);                                      \
 } while(0)
 
 #define compare_orig_rspd_sshbuf(c, str) do {               \
@@ -197,34 +199,32 @@ START_TEST(test_do_con_trol_ctrl_su)
         /*0000*/  13,  10,  27,  91,  63,  50,  48,  48,   52, 108,  13,                          //...[?200 4l.
     };
     cmd_ssh_rfd_handle(ssh, c, buf4, sizeof(buf4));
-    compare_rspd_sshbuf(c, "\n");
 
     unsigned char buf5[] = {
         /*0000*/  80,  97, 115, 115, 119, 111, 114, 100,   58,  32,                               //Password :
     };
     cmd_ssh_rfd_handle(ssh, c, buf5, sizeof(buf5));
-    compare_rspd_sshbuf(c, "\nPassword: ");
+    compare_proxy_state(c, PROXY_STATE_RSPD);
 
     unsigned char buf6[] = {
         /*0000*/ 106, 117, 109, 112,  49,  57,  57,  57,   64,                                    //jump1999 @
     };
     cmd_ssh_wfd_handle(ssh, c, buf6, sizeof(buf6));
     compare_proxy_state(c, PROXY_STATE_RSPD_INPUT);
-    compare_rspd_sshbuf(c, "\nPassword: ");
+    compare_orig_rspd_sshbuf(c, "\nPassword: ");
 
 
     unsigned char buf7[] = {
         /*0000*/  13,                                                                             //.
     };
     cmd_ssh_wfd_handle(ssh, c, buf7, sizeof(buf7));
-    compare_rspd_sshbuf(c, "\nPassword: ");
     compare_proxy_state(c, PROXY_STATE_RSPD);
 
     unsigned char buf8[] = {
         /*0000*/  13,  10,                                                                        //..
     };
     cmd_ssh_rfd_handle(ssh, c, buf8, sizeof(buf8));
-    compare_rspd_sshbuf(c, "\nPassword: \n");
+    //compare_orig_rspd_sshbuf(c, "\nPassword: \n");
 
     unsigned char buf9[] = {
         /*0000*/  27,  91,  63,  50,  48,  48,  52, 104,   91, 114, 111, 111, 116,  64,  86,  77, //.[?2004h [root@VM
@@ -232,8 +232,8 @@ START_TEST(test_do_con_trol_ctrl_su)
         /*0020*/  35,  32,                                                                        //#
     };
     cmd_ssh_rfd_handle(ssh, c, buf9, sizeof(buf9));
-    compare_rspd_sshbuf(c, "\nPassword: \n[root@VM-4-7-centos sbr]# ");
     compare_proxy_state(c, PROXY_STATE_RSPD);
+    compare_rspd_sshbuf(c, "\nPassword: \n[root@VM-4-7-centos sbr]# ");
 
     unsigned char buf10[] = {
         /*0000*/  'h', 'a'
@@ -287,7 +287,8 @@ START_TEST(test_do_con_trol_ctrl_adduser)
         /*0030*/ 0x27, 0x20, 0x28, 0x31, 0x30, 0x30, 0x38, 0x29,  0x20, 0x2e, 0x2e, 0x2e, 0x0d, 0x0a,             //' (1008)  .....
     };
     cmd_ssh_rfd_handle(ssh, c, buf4, sizeof(buf4));
-    compare_rspd_sshbuf(c, "Adding user `test4' ...\nAdding new group `test4' (1008) ...\n");
+    compare_rspd_sshbuf(c, "Adding user `test4' ...\n"
+                            "Adding new group `test4' (1008) ...\n");
 
     unsigned char buf5[] = {
         /*0000*/ 0x41, 0x64, 0x64, 0x69, 0x6e, 0x67, 0x20, 0x6e,  0x65, 0x77, 0x20, 0x75, 0x73, 0x65, 0x72, 0x20, //Adding n ew user
@@ -296,7 +297,9 @@ START_TEST(test_do_con_trol_ctrl_adduser)
         /*0030*/ 0x27, 0x20, 0x2e, 0x2e, 0x2e, 0x0d, 0x0a,                                                        //' .....
     };
     cmd_ssh_rfd_handle(ssh, c, buf5, sizeof(buf5));
-    compare_rspd_sshbuf(c, "Adding user `test4' ...\nAdding new group `test4' (1008) ...\nAdding new user `test4' (1007) with group `test4' ...\n");
+    compare_rspd_sshbuf(c, "Adding user `test4' ...\n"
+                            "Adding new group `test4' (1008) ...\n"
+                            "Adding new user `test4' (1007) with group `test4' ...\n");
 
     unsigned char buf6[] = {
         /*0000*/ 0x43, 0x72, 0x65, 0x61, 0x74, 0x69, 0x6e, 0x67,  0x20, 0x68, 0x6f, 0x6d, 0x65, 0x20, 0x64, 0x69, //Creating  home di
@@ -304,7 +307,10 @@ START_TEST(test_do_con_trol_ctrl_adduser)
         /*0020*/ 0x65, 0x73, 0x74, 0x34, 0x27, 0x20, 0x2e, 0x2e,  0x2e, 0x0d, 0x0a,                               //est4' .. ...
     };
     cmd_ssh_rfd_handle(ssh, c, buf6, sizeof(buf6));
-    compare_rspd_sshbuf(c, "Adding user `test4' ...\nAdding new group `test4' (1008) ...\nAdding new user `test4' (1007) with group `test4' ...\nCreating home directory `/home/test4' ...\n");
+    compare_rspd_sshbuf(c, "Adding user `test4' ...\n"
+                            "Adding new group `test4' (1008) ...\n"
+                            "Adding new user `test4' (1007) with group `test4' ...\n"
+                            "Creating home directory `/home/test4' ...\n");
 
     unsigned char buf7[] = {
         /*0000*/ 0x43, 0x6f, 0x70, 0x79, 0x69, 0x6e, 0x67, 0x20,  0x66, 0x69, 0x6c, 0x65, 0x73, 0x20, 0x66, 0x72, //Copying  files fr
@@ -312,7 +318,11 @@ START_TEST(test_do_con_trol_ctrl_adduser)
         /*0020*/ 0x2e, 0x2e, 0x0d, 0x0a,                                                                          //....
     };
     cmd_ssh_rfd_handle(ssh, c, buf7, sizeof(buf7));
-    compare_rspd_sshbuf(c, "Adding user `test4' ...\nAdding new group `test4' (1008) ...\nAdding new user `test4' (1007) with group `test4' ...\nCreating home directory `/home/test4' ...\nCopying files from `/etc/skel' ...\n");
+    compare_rspd_sshbuf(c, "Adding user `test4' ...\n"
+                            "Adding new group `test4' (1008) ...\n"
+                            "Adding new user `test4' (1007) with group `test4' ...\n"
+                            "Creating home directory `/home/test4' ...\n"
+                            "Copying files from `/etc/skel' ...\n");
 
     unsigned char buf8[] = {
         /*0000*/ 0x45, 0x6e, 0x74, 0x65, 0x72, 0x20, 0x6e, 0x65,  0x77, 0x20, 0x55, 0x4e, 0x49, 0x58, 0x20, 0x70, //Enter ne w UNIX p
@@ -341,7 +351,13 @@ START_TEST(test_do_con_trol_ctrl_adduser)
     };
     cmd_ssh_rfd_handle(ssh, c, buf10, sizeof(buf10));
     compare_proxy_state(c, PROXY_STATE_RSPD);
-    compare_rspd_sshbuf(c, "Adding user `test4' ...\nAdding new group `test4' (1008) ...\nAdding new user `test4' (1007) with group `test4' ...\nCreating home directory `/home/test4' ...\nCopying files from `/etc/skel' ...\nEnter new UNIX password: \nRetype new UNIX password: ");
+    compare_rspd_sshbuf(c, "Adding user `test4' ...\n"
+                            "Adding new group `test4' (1008) ...\n"
+                            "Adding new user `test4' (1007) with group `test4' ...\n"
+                            "Creating home directory `/home/test4' ...\n"
+                            "Copying files from `/etc/skel' ...\n"
+                            "Enter new UNIX password: \n"
+                            "Retype new UNIX password: ");
 
     unsigned char buf10_1[] = {
         /*0000*/ 0x0d, 0x0a

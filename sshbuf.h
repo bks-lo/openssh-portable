@@ -64,6 +64,9 @@ struct sshbuf *sshbuf_fromb(struct sshbuf *buf);
  */
 int	sshbuf_froms(struct sshbuf *buf, struct sshbuf **bufp);
 
+/* Deep copy from other sshbuf */
+struct sshbuf *sshbuf_fromd(struct sshbuf *buf);
+
 /*
  * Clear and free buf
  */
