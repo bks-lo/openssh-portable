@@ -81,8 +81,8 @@ static int need_input(Channel *c)
 {
     //TODO: 将输入标记通过配置文件加载到 Channel 中，然后循环匹配
     const char *arr[] = {
-        ": ",
-        "? [y/n] ",
+        ": ",           /* 登录提示符 */
+        "? [y/n] ",     /* 确认是否执行命令 */
     };
 
     int i = 0;
@@ -140,6 +140,7 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         break;
     case PROXY_STATE_RSPD:
         proxy_rspd_end(c);
+        /* 根据响应最后的单词标记 来判断 是否为交互式的命令输入，还是普通的命令输入 */
         if (!need_input(c)) {
             c->proxy_state = PROXY_STATE_CMD_START;
             goto proxy_state_cmd_start;
@@ -147,9 +148,13 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 
         c->proxy_state = PROXY_STATE_RSPD_INPUT;
     case PROXY_STATE_RSPD_INPUT:
+        /* 当交互式的命令输入提交后，继续审计响应数据 */
         if (buf[len - 1] == 0x0d) {
             c->proxy_state = PROXY_STATE_RSPD;
         }
+        break;
+    case PROXY_STATE_CMD_ECHO_START:
+        /* 需要在回包中审计命令，但是请求包过长分包了，不做任何处理 */
         break;
     default:
         fatal_f("state = %d, invalid", c->proxy_state);
@@ -193,14 +198,9 @@ int cmd_ssh_rfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         c->proxy_state = PROXY_STATE_RSPD;
         // fallthrough
     case PROXY_STATE_RSPD:
-    case PROXY_STATE_RSPD_INPUT:
+    case PROXY_STATE_RSPD_INPUT:    /* 交互式命令输入的回显数据正常审计 */
         rfd_rspd_handle(ssh, c, buf, len);
         break;
-    /*
-    case PROXY_STATE_RSPD_INPUT:
-        rfd_rspd_handle(ssh, c, buf, len);
-        break;
-    */
     case PROXY_STATE_CMD_START:
         /* Not to do anything */
         break;

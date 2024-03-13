@@ -15,14 +15,14 @@
 typedef enum proxy_state_t
 {
     PROXY_STATE_NONE = 0,
-    PROXY_STATE_LOGIN,
-    PROXY_STATE_LOGIN_PROMPT,
-    PROXY_STATE_CMD_START,
-	PROXY_STATE_CMD,
-    PROXY_STATE_CMD_ECHO_START,
-    PROXY_STATE_CMD_ECHO,
-    PROXY_STATE_RSPD,
-    PROXY_STATE_RSPD_INPUT,
+    PROXY_STATE_LOGIN,          /* 登录阶段 */
+    PROXY_STATE_LOGIN_PROMPT,   /* 记录命令行提示符 */
+    PROXY_STATE_CMD_START,      /* 开始输入命令 */
+	PROXY_STATE_CMD,            /* 输入命令阶段 */
+    PROXY_STATE_CMD_ECHO_START, /* 开始在回显中提取命令*/
+    PROXY_STATE_CMD_ECHO,       /* 在回显中提取命令阶段 */
+    PROXY_STATE_RSPD,           /* 记录响应数据 */
+    PROXY_STATE_RSPD_INPUT,     /* 交互式输入阶段 */
     PROXY_STATE_END
 } proxy_state_t;
 

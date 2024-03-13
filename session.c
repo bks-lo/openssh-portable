@@ -95,6 +95,10 @@
 #include "sftp.h"
 #include "atomicio.h"
 
+#ifdef PROXY_ENABLE
+#include "cmd-vc.h"
+#endif
+
 #if defined(KRB5) && defined(USE_AFS)
 #include <kafs.h>
 #endif
@@ -436,7 +440,7 @@ do_exec_no_pty(struct ssh *ssh, Session *s, const char *command)
 
 	/* 设置为登录状态 */
 #ifdef PROXY_ENABLE
-	Channel *c = channel_by_id(ssh, s->chanid);
+	Channel *c = channel_lookup(ssh, s->chanid);
 	c->proxy_state = PROXY_STATE_LOGIN;
 #endif
 
@@ -594,7 +598,7 @@ do_exec_pty(struct ssh *ssh, Session *s, const char *command)
 
 	/* 设置为登录状态 */
 #ifdef PROXY_ENABLE
-	Channel *c = channel_by_id(ssh, s->chanid);
+	Channel *c = channel_lookup(ssh, s->chanid);
 	c->proxy_state = PROXY_STATE_LOGIN;
 #endif
 
@@ -1535,8 +1539,8 @@ do_child(struct ssh *ssh, Session *s, const char *command)
 	struct passwd *pw = s->pw;
 	int r = 0;
 
-#if PROXY_ENABLE
-	Channel *c = channel_by_id(ssh, s->chanid);
+#ifdef PROXY_ENABLE
+	Channel *c = channel_lookup(ssh, s->chanid);
 #endif
 
 	sshpkt_fmt_connection_id(ssh, remote_id, sizeof(remote_id));
@@ -1714,7 +1718,7 @@ do_child(struct ssh *ssh, Session *s, const char *command)
 		}
 
 
-#if !PROXY_ENABLE
+#ifndef PROXY_ENABLE
 		/* Execute the shell. */
 		argv[0] = argv0;
 		argv[1] = NULL;
@@ -1739,7 +1743,7 @@ do_child(struct ssh *ssh, Session *s, const char *command)
 	 */
 	argv[0] = (char *) shell0;
 	argv[1] = "-c";
-#if !PROXY_ENABLE
+#ifndef PROXY_ENABLE
 	argv[2] = (char *) command;
 #else
 	char tmp[1024] = {0};
@@ -1931,6 +1935,10 @@ session_window_change_req(struct ssh *ssh, Session *s)
 		sshpkt_fatal(ssh, r, "%s: parse packet", __func__);
 
 	pty_change_window_size(s->ptyfd, s->row, s->col, s->xpixel, s->ypixel);
+#ifdef PROXY_ENABLE
+    Channel *c = channel_lookup(ssh, s->chanid);
+    vc_do_resize(c->vc, s->col, s->row);
+#endif
 	return 1;
 }
 
@@ -1983,6 +1991,10 @@ session_pty_req(struct ssh *ssh, Session *s)
 
 	/* Set window size from the packet. */
 	pty_change_window_size(s->ptyfd, s->row, s->col, s->xpixel, s->ypixel);
+#ifdef PROXY_ENABLE
+    Channel *c = channel_lookup(ssh, s->chanid);
+    vc_do_resize(c->vc, s->col, s->row);
+#endif
 
 	session_proctitle(s);
 	return 1;

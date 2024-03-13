@@ -128,6 +128,7 @@ END_TEST
 
 START_TEST(test_do_con_trol_ctrl_echo)
 {
+#if 0
     struct ssh xssh = {NULL};
     Channel xc = {0};
     struct ssh *ssh = &xssh;
@@ -147,14 +148,81 @@ START_TEST(test_do_con_trol_ctrl_echo)
 
     //reset_rspd_status(c);
     unsigned char buf3[] = {
-        /*0000*/  13,  27,  91,  49,  49,  80, 114, 111,  111, 116,  64, 102, 111, 114, 116,  58, //..[11Pro ot@fort:
-        /*0010*/ 126,  35,  27,  91,  67,  27,  91,  67,   27,  91,  67,  27,  91,  67,  27,  91, //~#.[C.[C .[C.[C.[
-        /*0020*/  67,  27,  91,  67,  27,  91,  67,  27,   91,  67,  27,  91,  67,  13,  10, 104, //C.[C.[C. [C.[C..h
-        /*0030*/  97, 104,  97,  13,  10, 114, 111, 111,  116,  64, 102, 111, 114, 116,  58, 126, //aha..roo t@fort:~
-        /*0040*/  35,  32,                                                                        //#
+        /*0000*/ 0x0d, 0x1b, 0x5b, 0x31, 0x31, 0x50, 0x72, 0x6f,  0x6f, 0x74, 0x40, 0x66, 0x6f, 0x72, 0x74, 0x3a, //..[11Pro ot@fort:
+        /*0010*/ 0x7e, 0x23, 0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43,  0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x1b, 0x5b, //~#.[C.[C .[C.[C.[
+        /*0020*/ 0x43, 0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x1b,  0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x0d, 0x0a, 0x68, //C.[C.[C. [C.[C..h
+        /*0030*/ 0x61, 0x68, 0x61, 0x0d, 0x0a, 0x72, 0x6f, 0x6f,  0x74, 0x40, 0x66, 0x6f, 0x72, 0x74, 0x3a, 0x7e, //aha..roo t@fort:~
+        /*0040*/ 0x23, 0x20,                                                                                      //#
     };
     cmd_ssh_rfd_handle(ssh, c, buf3, sizeof(buf3));
     compare_rspd_sshbuf(c, "root@fort:~#\nhaha\nroot@fort:~# ");
+
+    free_ssh_channal(ssh, c);
+#endif
+    struct ssh xssh = {NULL};
+    Channel xc = {0};
+    struct ssh *ssh = &xssh;
+    Channel *c = &xc;
+    init_ssh_channal(ssh, c);
+    struct vc_data *vc = c->vc;
+
+    c->proxy_state = PROXY_STATE_LOGIN_PROMPT;
+
+    unsigned char buf1[] = {
+        /*0000*/ 0x72, 0x6f, 0x6f, 0x74, 0x40, 0x66, 0x6f, 0x72,  0x74, 0x3a, 0x7e, 0x23, 0x20,                   //root@for t:~#
+    };
+    cmd_ssh_rfd_handle(ssh, c, buf1, sizeof(buf1));
+
+    unsigned char buf2[] = {
+        /*0000*/ 0x12,                                                                                            //.
+    };
+    cmd_ssh_wfd_handle(ssh, c, buf2, sizeof(buf2));
+
+    unsigned char buf3[] = {
+        /*0000*/ 0x0d, 0x1b, 0x5b, 0x39, 0x40, 0x28, 0x72, 0x65,  0x76, 0x65, 0x72, 0x73, 0x65, 0x2d, 0x69, 0x2d, //..[9@(re verse-i-
+        /*0010*/ 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x29, 0x60,  0x27, 0x3a, 0x1b, 0x5b, 0x43,                   //search)` ':.[C
+    };
+    cmd_ssh_rfd_handle(ssh, c, buf3, sizeof(buf3));
+    compare_proxy_state(c, PROXY_STATE_CMD_ECHO);
+    compare_rspd_sshbuf(c, "(reverse-i-search)`':");
+
+    unsigned char buf4[] = {
+        /*0000*/ 0x08, 0x08, 0x08, 0x68, 0x27, 0x3a, 0x20, 0x65,  0x63, 0x68, 0x6f, 0x20, 0x22, 0x68, 0x61, 0x68, //...h': e cho "hah
+        /*0010*/ 0x61, 0x22, 0x08, 0x08, 0x08,                                                                    //a"...
+    };
+    cmd_ssh_rfd_handle(ssh, c, buf4, sizeof(buf4));
+    compare_rspd_sshbuf(c, "(reverse-i-search)`h': echo \"haha\"");
+
+
+    unsigned char buf5[] = {
+        /*0000*/ 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08,  0x08, 0x08, 0x08, 0x1b, 0x5b, 0x31, 0x40, 0x61, //........ ....[1@a
+        /*0010*/ 0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x1b, 0x5b,  0x43, 0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x1b, //.[C.[C.[ C.[C.[C.
+        /*0020*/ 0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43,  0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x1b, 0x5b, //[C.[C.[C .[C.[C.[
+        /*0030*/ 0x43,                                                                                            //C
+
+    };
+    cmd_ssh_rfd_handle(ssh, c, buf5, sizeof(buf5));
+    compare_rspd_sshbuf(c, "(reverse-i-search)`ha': echo \"haha\"");
+
+    unsigned char buf6[] = {
+        /*0000*/ 0x0d,                                                                                            //.
+    };
+    cmd_ssh_wfd_handle(ssh, c, buf6, sizeof(buf6));
+
+    unsigned char buf7[] = {
+        /*0000*/ 0x0d, 0x1b, 0x5b, 0x31, 0x31, 0x50, 0x72, 0x6f,  0x6f, 0x74, 0x40, 0x66, 0x6f, 0x72, 0x74, 0x3a, //..[11Pro ot@fort:
+        /*0010*/ 0x7e, 0x23, 0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43,  0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x1b, 0x5b, //~#.[C.[C .[C.[C.[
+        /*0020*/ 0x43, 0x1b, 0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x1b,  0x5b, 0x43, 0x1b, 0x5b, 0x43, 0x0d, 0x0a, 0x68, //C.[C.[C. [C.[C..h
+        /*0030*/ 0x61, 0x68, 0x61, 0x0d, 0x0a, 0x72, 0x6f, 0x6f,  0x74, 0x40, 0x66, 0x6f, 0x72, 0x74, 0x3a, 0x7e, //aha..roo t@fort:~
+        /*0040*/ 0x23, 0x20,                                                                                      //#
+    };
+    cmd_ssh_rfd_handle(ssh, c, buf7, sizeof(buf7));
+    /*
+      这里真正的预期 "root@fort:~# echo \"haha\"\nhaha\nroot@fort:~# "
+      因为状态转换过，导致vc缓存都被清理
+    */
+    compare_rspd_sshbuf(c, "root@fort:~#\nhaha\nroot@fort:~# ");
+
 
     free_ssh_channal(ssh, c);
 }

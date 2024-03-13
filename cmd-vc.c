@@ -11,6 +11,7 @@
 
 #include <string.h>
 #include <linux/types.h>
+#include <stdint.h>
 #include "includes.h"
 #include "openbsd-compat/sys-queue.h"
 #include "log.h"
@@ -22,6 +23,8 @@
 #define VC_MAXCOL (32767)
 #define VC_MAXROW (32767)
 #define VC_MALLOC_SIZE_MAX  (1 << 22)
+
+#define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 
 static struct uni_pagedict *dflt;
 
@@ -368,6 +371,17 @@ static int uint_to_char(unsigned int uic, char *buf, int len)
     return j;
 }
 
+static void notify_write(struct vc_data *vc, unsigned int unicode)
+{
+    return 0;
+
+    char tb[sizeof(unsigned int)] = {0};
+    int j = uint_to_char(unicode, tb, sizeof(tb));
+    if (j != 0) {
+        //sshbuf_put(vc->sbuf, tb, j);
+    }
+}
+
 int uints_to_sshbuf(unsigned int *ls, int ls_len, struct sshbuf *sbuf)
 {
     int i = 0;
@@ -401,16 +415,20 @@ int vc_data_to_sshbuf(struct vc_data *vc, struct sshbuf *sbuf)
     int i = 0;
     int j = 0;
     for (; j < y; ++j) {
-        i = uints_to_sshbuf(vc->vc_uni_lines[j], vc->vc_cols, sbuf);
-        //sshbuf_put_u8(sbuf, '\n');
+        i = uints_to_sshbuf(vc->vc_uni_lines[j], vc->vc_cols + 1, sbuf);
         debug_p("j=%d, i=%d", j, i);
-        if (i != vc->vc_cols) {
+        //debug_p("j=%d, i=%d, %s", j, i, sshbuf_ptr(sbuf));
+
+
+        /* 如果行未满，且最后一个字符不是换行符，则强行换行 */
+        if (i > 0 && i < vc->vc_cols && vc->vc_uni_lines[j][i-1] != '\n') {
             sshbuf_put_u8(sbuf, '\n');
         }
     }
 
-    i = uints_to_sshbuf(vc->vc_uni_lines[j], vc->vc_cols, sbuf);
-    debug_p("end: j=%d, i=%d", j, i);
+    i = uints_to_sshbuf(vc->vc_uni_lines[j], vc->vc_cols + 1, sbuf);
+    debug_p("j=%d, i=%d", j, i);
+    //debug_p("end: j=%d, i=%d, %s", j, i, sshbuf_ptr(sbuf));
 }
 
 
@@ -423,7 +441,7 @@ int print_uni_line(struct vc_data *vc)
 
     struct sshbuf *pbuf = sshbuf_new();
     debug_p("y=%d, x=%d", y, x);
-    uints_to_sshbuf(vc->vc_uni_lines[y], vc->vc_cols, pbuf);
+    uints_to_sshbuf(vc->vc_uni_lines[y], vc->vc_cols + 1, pbuf);
     debug_p("[%d]>>%s", sshbuf_len(pbuf), sshbuf_ptr(pbuf));
     sshbuf_free(pbuf);
 }
@@ -759,6 +777,126 @@ int conv_uni_to_pc(struct vc_data *conp, long ucs)
     return glyph;
 }
 
+static int gcd(int a, int b)
+{
+    int temp;
+    while (b != 0) {
+        temp = a % b;
+
+        a = b;
+        b = temp;
+    }
+    return a;
+}
+
+/* juggling array rotation algorithm (complexity O(N), size complexity O(1)) */
+static void juggle_array(uint32_t **array, unsigned int size, unsigned int nr)
+{
+	unsigned int gcd_idx;
+
+	for (gcd_idx = 0; gcd_idx < gcd(nr, size); gcd_idx++) {
+		uint32_t *gcd_idx_val = array[gcd_idx];
+		unsigned int dst_idx = gcd_idx;
+
+		while (1) {
+			unsigned int src_idx = (dst_idx + nr) % size;
+			if (src_idx == gcd_idx)
+				break;
+
+			array[dst_idx] = array[src_idx];
+			dst_idx = src_idx;
+		}
+
+		array[dst_idx] = gcd_idx_val;
+	}
+}
+
+static void vc_uniscr_scroll(struct vc_data *vc, unsigned int top,
+			     unsigned int bottom, enum con_scroll dir,
+			     unsigned int nr)
+{
+	uint32_t **uni_lines = vc->vc_uni_lines;
+	unsigned int size = bottom - top;
+
+	if (!uni_lines)
+		return;
+
+/*
+    cols = 9  rows = 5
+    top = 0   bottom = 5   nr = 1
+
+dir = down, 屏幕向下拉一行，最后一行会被挤掉，第一行会被新行填充
+    向前旋转4步
+    juggle_array(&arr[0], 5, 4)
+
+	----------------                        ----------------
+h   |r0|r1|r2|r3|r4|                    h   |r4|r0|r1|r2|r3|
+	----------------------------            ----------------------------
+r0  | 0| 1| 2| 3| 4| 5| 6| 7| 8|        r4 | 0| 1| 2| 3| 4| 5| 6| 7| 8|
+	----------------------------            ----------------------------
+r1  |  |  |  |  |  |  |  |  |  |        r0  |  |  |  |  |  |  |  |  |  |
+	----------------------------            ----------------------------
+r2  |  |  |  |  |  |  |  |  |  |        r1  |  |  |  |  |  |  |  |  |  |
+	----------------------------            ----------------------------
+r3  |  |  |  |  |  |  |  |  |  |        r2  |  |  |  |  |  |  |  |  |  |
+	----------------------------            ----------------------------
+r4  |  |  |  |  |  |  |  |  |  |        r3  |  |  |  |  |  |  |  |  |  |
+	----------------------------            ----------------------------
+
+    vc_uniscr_clear_lines(vc, top => &r4, 1)
+    将r4对应的行数据清理掉
+
+
+dir = up，屏幕向上拉一行，第一行会被挤掉，最后一行会被新行填充
+    向前旋转1步
+    juggle_array(&arr[0], 5, 1)
+
+	----------------                        ----------------
+h   |r0|r1|r2|r3|r4|                    h   |r1|r2|r3|r4|r0|
+	----------------------------            ----------------------------
+r0  | 0| 1| 2| 3| 4| 5| 6| 7| 8|        r1  | 0| 1| 2| 3| 4| 5| 6| 7| 8|
+	----------------------------            ----------------------------
+r1  |  |  |  |  |  |  |  |  |  |        r2  |  |  |  |  |  |  |  |  |  |
+	----------------------------            ----------------------------
+r2  |  |  |  |  |  |  |  |  |  |        r3  |  |  |  |  |  |  |  |  |  |
+	----------------------------            ----------------------------
+r3  |  |  |  |  |  |  |  |  |  |        r4  |  |  |  |  |  |  |  |  |  |
+	----------------------------            ----------------------------
+r4  |  |  |  |  |  |  |  |  |  |        r0 |  |  |  |  |  |  |  |  |  |
+	----------------------------            ----------------------------
+    vc_uniscr_clear_lines(vc, bottom - nr => &r0, 1)
+    将r0对应的行数据清理掉
+
+    数组旋转期间 top bottom 都不会改变
+*/
+
+	if (dir == SM_DOWN) {
+		juggle_array(&uni_lines[top], size, size - nr);
+		vc_uniscr_clear_lines(vc, top, nr);
+	} else {
+		juggle_array(&uni_lines[top], size, nr);
+		vc_uniscr_clear_lines(vc, bottom - nr, nr);
+	}
+}
+
+static void con_scroll(struct vc_data *vc, unsigned int top,
+		       unsigned int bottom, enum con_scroll dir,
+		       unsigned int nr)
+{
+    unsigned int rows = bottom - top;
+    uint16_t *clear, *dst, *src;
+
+    if (top + nr >= bottom)
+        nr = rows - 1;
+    if (bottom > vc->vc_rows || top >= bottom || nr < 1)
+        return;
+
+    /* 旋转h部分的数组，方向只能向前，所以向后移动时，需要转换 */
+    vc_uniscr_scroll(vc, top, bottom, dir, nr);
+    return;
+}
+
+
 #define BIT(nr)            (((unsigned int)1) << (nr))
 #define BIT_ULL(nr)        (((unsigned long)1) << (nr))
 bool vc_is_control(struct vc_data *vc, int tc, int c)
@@ -810,6 +948,7 @@ static inline void bs(struct vc_data *vc)
         vc->vc_pos -= 2;
         vc->state.x--;
         vc->vc_need_wrap = 0;
+        //notify_write(vc, '\b');
     }
 }
 
@@ -826,7 +965,7 @@ static void lf(struct vc_data *vc)
      */
     if (vc->state.y + 1 == vc->vc_bottom) {
         debug_p("y at bottom");
-        // con_scroll(vc, vc->vc_top, vc->vc_bottom, SM_UP, 1);
+        //con_scroll(vc, vc->vc_top, vc->vc_bottom, SM_UP, 1);
         vc->is_bottom = 1;
     }
     else if (vc->state.y < vc->vc_rows - 1) {
@@ -835,7 +974,6 @@ static void lf(struct vc_data *vc)
     }
 
     vc->vc_need_wrap = 0;
-    //notify_write(vc, '\n');
 }
 
 static inline void del(struct vc_data *vc)
@@ -962,8 +1100,8 @@ static int vc_con_write_normal(struct vc_data *vc, int tc, int c)
             tc = ' ';
         next_c = ' ';
     }
-    //notify_write(vc, c);
 
+    notify_write(vc, c);
     /*
     if (inverse)
         con_flush(vc, draw);
@@ -1518,6 +1656,38 @@ static int con_set_default_unimap(struct vc_data *vc)
     return err;
 }
 
+static void vc_uniscr_copy_area(uint32_t **dst_lines,
+                unsigned int dst_cols,
+                unsigned int dst_rows,
+                uint32_t **src_lines,
+                unsigned int src_cols,
+                unsigned int src_top_row,
+                unsigned int src_bot_row)
+{
+    unsigned int dst_row = 0;
+
+    if (!dst_lines)
+        return;
+
+    while (src_top_row < src_bot_row) {
+        uint32_t *src_line = src_lines[src_top_row];
+        uint32_t *dst_line = dst_lines[dst_row];
+
+        memcpy(dst_line, src_line, src_cols * sizeof(*src_line));
+        if (dst_cols - src_cols)
+            memset(dst_line + src_cols, 0, dst_cols - src_cols);
+        src_top_row++;
+        dst_row++;
+    }
+    while (dst_row < dst_rows) {
+        uint32_t *dst_line = dst_lines[dst_row];
+
+        memset(dst_line, 0, dst_cols);
+        dst_row++;
+    }
+}
+
+
 
 struct vc_data *vc_data_creat()
 {
@@ -1527,6 +1697,7 @@ struct vc_data *vc_data_creat()
 
 int vc_do_resize(struct vc_data *vc, unsigned int cols, unsigned int lines)
 {
+    debug_p("vc=%p, cols=%d, lines=%d", vc, cols, lines);
     unsigned int new_cols, new_rows, new_row_size, new_screen_size;
     unsigned int **new_uniscr = NULL;
     unsigned short *oldscreen, *newscreen;
@@ -1556,16 +1727,50 @@ int vc_do_resize(struct vc_data *vc, unsigned int cols, unsigned int lines)
     if (!newscreen)
         return -ENOMEM;
 
-    new_uniscr = vc_uniscr_alloc(new_cols, new_rows);
+    new_uniscr = vc_uniscr_alloc(new_cols + 1, new_rows);
     if (!new_uniscr) {
         free(newscreen);
         return -ENOMEM;
     }
 
+    unsigned int old_rows = vc->vc_rows;
+    unsigned int old_row_size = vc->vc_size_row;
+
     vc->vc_rows = new_rows;
     vc->vc_cols = new_cols;
     vc->vc_size_row = new_row_size;
     vc->vc_screenbuf_size = new_screen_size;
+
+    unsigned int first_copied_row;
+    unsigned long rlth = MIN(old_row_size, new_row_size);
+    unsigned long old_origin = vc->vc_origin;
+    unsigned long new_origin = (long) newscreen;
+    unsigned long new_scr_end = new_origin + new_screen_size;
+
+    if (vc->state.y <= new_rows) {
+        first_copied_row = 0;
+    } else {
+        if (old_rows - vc->state.y < new_rows) {
+            /*
+                * Cursor near the bottom, copy contents from the
+                * bottom of buffer
+                */
+            first_copied_row = (old_rows - new_rows);
+        } else {
+            /*
+                * Cursor is in no man's land, copy 1/2 screenful
+                * from the top and bottom of cursor position
+                */
+            first_copied_row = (vc->state.y - new_rows/2);
+        }
+        old_origin += first_copied_row * old_row_size;
+    }
+    unsigned long end = old_origin + old_row_size * MIN(old_rows, new_rows);
+
+    vc_uniscr_copy_area(new_uniscr, new_cols, new_rows,
+                        vc->vc_uni_lines, rlth/2, first_copied_row,
+                        MIN(old_rows, new_rows));
+
     vc_uniscr_set(vc, new_uniscr);
 
     if (vc->vc_screenbuf)
@@ -1582,6 +1787,8 @@ int vc_do_resize(struct vc_data *vc, unsigned int cols, unsigned int lines)
 
 
 #define CUR_MAKE(size, change, set)    ((size) | ((change) << 8) |    ((set) << 16))
+
+int g_crx_before = 0;
 
 void do_rspd_con_trol(struct vc_data *vc, int c)
 {
@@ -1603,19 +1810,28 @@ void do_rspd_con_trol(struct vc_data *vc, int c)
         return;
     case 9:
         debug_p("tab key");
+        notify_write(vc, '\t');
         return;
     case 10: case 11: case 12:
+        if (vc->state.x == 0 &&  vc->vc_uni_lines[vc->state.y][vc->state.x] != 0) {
+            vc->vc_uni_lines[vc->state.y][g_crx_before] = '\n';
+            g_crx_before = 0;
+        } else {
+            vc_uniscr_putc(vc, '\n');
+        }
         print_uni_line(vc);
         //vc_uniscr_putc(vc, 0);
         lf(vc);
         vc->is_lf = 1;
-        // debug_p("\\n, and fallthrough");
-        // return;
+        notify_write(vc, '\n');
+        return;
     case 13:
         // debug_p("\\r");
-        //vc_uniscr_putc(vc, 0);
+        if (vc->state.x > 0)
+            g_crx_before = vc->state.x;
         cr(vc);
         vc->is_cr = 1;
+        notify_write(vc, '\r');
         return;
     case 14:
         vc->state.charset = 1;

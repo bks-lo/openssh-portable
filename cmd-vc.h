@@ -2,10 +2,17 @@
 #define __CMD_VC_H__
 
 #include <stdbool.h>
+#include "sshbuf.h"
 
 #define NPAR 16
 #define VC_TABSTOPS_COUNT    256U
 #define MAX_GLYPH 512        /* Max possible glyph value */
+
+enum con_scroll {
+	SM_UP,
+	SM_DOWN,
+};
+
 
 enum vc_intensity {
     VCI_HALF_BRIGHT,
