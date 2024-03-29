@@ -193,7 +193,7 @@ SSHD_SUB_C_FILE=auth-rhosts.c auth-passwd.c \
 	sandbox-seccomp-filter.c sandbox-capsicum.c sandbox-pledge.c \
 	sandbox-solaris.c uidswap.c $(SK_C_FILE)
 
-SSHD_PROXY_C_FILE=cmd-vc.c cmd-audit.c cmd-common.c cmd-ssh.c cmd-sftp.c
+SSHD_PROXY_C_FILE=cmd-vc.c cmd-audit.c cmd-common.c cmd-ssh.c cmd-sftp.c cmd-match.c
 
 SSHD_C_FILE=sshd.c $(SSHD_SUB_C_FILE)
 

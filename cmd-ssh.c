@@ -11,6 +11,7 @@
 #include "cmd-common.h"
 #include "cmd-vc.h"
 #include "xmalloc.h"
+#include "cmd-match.h"
 
 #define WHITESPACE " \t\r\n"
 
@@ -96,13 +97,58 @@ static int need_input(Channel *c)
     return 0;
 }
 
+static int cmd_is_vi(struct sshbuf *cmd)
+{
+    const char *ptr = sshbuf_ptr(cmd);
+    int len = sshbuf_len(cmd);
+
+
+    if (ptr[0] == 'v' && ptr[1] == 'i') {
+        if (ptr[2] == ' ' && len > 3) {
+            return 1;
+        } else if (ptr[2] == 'm' && ptr[3] == ' ' && len > 4) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static int cmd_match(Channel *c, struct sshbuf *cmd)
+{
+    cmd_st *pcmd_ret = cmdctrl_match(c->pcmdctrl, sshbuf_ptr(cmd));
+
+    if (pcmd_ret == NULL || !CCTYPE_ISSET(pcmd_ret, CCTYPE_BLACK)) {
+        return 0;
+    }
+
+    debug_p("Warnning: black cmd match %s", pcmd_ret->cmd);
+
+    // send to client
+    char cmd_deny[1024] = {0};
+    snprintf(cmd_deny, sizeof(cmd_deny), "\r\nPermission denied by rule [%s]", pcmd_ret->cmd);
+    sshbuf_put(c->input, cmd_deny, strlen(cmd_deny));
+
+    // send to server
+    #if 0
+    char clearline[] = {0x1b, 0x5b, 0x32, 0x4b};
+    //char clearline[] = {0x1b};
+    write(c->wfd, clearline, sizeof(clearline));
+    //write(c->wfd, '\r', 1);
+    #else
+    char clearline[1] = {0x03};
+    write(c->wfd, clearline, 1);
+    #endif
+
+    return 1;
+}
 
 int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 {
 #if SSH_PROXY_DIRECT
     return 0;
 #endif
-
+    struct sshbuf *newline = NULL;
     debug_p("cmd start state=%d", c->proxy_state);
     switch (c->proxy_state) {
     case PROXY_STATE_LOGIN_PROMPT:
@@ -119,23 +165,44 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
             break;
         }
 
-        /* 只有一个字符 代表是用户手动输入的字符，会回显请求数据，可以在回显中审计     ||
-           第一个字节为控制字符 的多字节字符串 代表 粘贴的命令不会直接发送给服务端，会回显请求数据，可以在回显中审计 */
-        if (len == 1 || vc_is_control(c->vc, 1, buf[0])) {
+        /* 只有一个字符 代表是用户手动输入的字符，会回显请求数据，可以在回显中审计
+           || 第一个字节为控制字符 的多字节字符串 代表 粘贴的命令不会直接发送给服务端，会回显请求数据，可以在回显中审计
+           || 粘贴的命令中没有 提交字符('\r')  */
+        if (len == 1 || vc_is_control(c->vc, 1, buf[0]) || strchr(buf, '\r') == NULL) {
             c->proxy_state = PROXY_STATE_CMD_ECHO_START;
             break;
         }
 
-        /* 第一个字节为普通字符  的多字节字符串 代表 用户粘贴的命令没有回显，会直接发送给服务端，所以需要立即审计 */
+        /* 第一个字节为普通字符  的多字节字符串  并且 有提交字符， 代表 用户粘贴的命令没有回显，会直接发送给服务端，所以需要立即审计 */
         c->proxy_state = PROXY_STATE_CMD;
         // fallthrough
     case PROXY_STATE_CMD:
         wfd_cmd_handle(ssh, c, buf, len);
+        // 命令匹配
+        if (newline == NULL) {
+            newline = sshbuf_new();
+        } else {
+            sshbuf_reset(newline);
+        }
+        vc_data_to_sshbuf(c->vc, newline);
+        if (cmd_match(c, newline)) {
+            c->proxy_state = PROXY_STATE_LOGIN_PROMPT;
+            return -1;
+        }
+
         break;
     case PROXY_STATE_CMD_ECHO:
         if (len == 1 && buf[0] == 0x0d) {
             proxy_cmd_end(c);
-            c->proxy_state = PROXY_STATE_RSPD;
+            if (cmd_match(c, c->cmd)) {
+                c->proxy_state = PROXY_STATE_LOGIN_PROMPT;
+                return -1;
+            }
+            if (cmd_is_vi(c->cmd)) {
+                c->proxy_state = PROXY_STATE_RSPD_NOA;
+            } else {
+                c->proxy_state = PROXY_STATE_RSPD;
+            }
         }
         break;
     case PROXY_STATE_RSPD:
@@ -156,6 +223,8 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
     case PROXY_STATE_CMD_ECHO_START:
         /* 需要在回包中审计命令，但是请求包过长分包了，不做任何处理 */
         break;
+    case PROXY_STATE_RSPD_NOA:
+        break;
     default:
         fatal_f("state = %d, invalid", c->proxy_state);
         break;
@@ -170,6 +239,7 @@ int cmd_ssh_rfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 #if SSH_PROXY_DIRECT
     return 0;
 #endif
+    struct sshbuf *newline = NULL;
     debug_p("rspd start state=%d", c->proxy_state);
     switch (c->proxy_state) {
     case PROXY_STATE_LOGIN:
@@ -190,16 +260,35 @@ int cmd_ssh_rfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         rfd_cmd_handle(ssh, c, buf, len);
         break;
     case PROXY_STATE_CMD:
+        /* 记录 */
         if (!vc_is_cr(c->vc)) {
             break;
         }
 
         proxy_cmd_end(c);
-        c->proxy_state = PROXY_STATE_RSPD;
+        if (cmd_is_vi(c->cmd)) {
+            c->proxy_state = PROXY_STATE_RSPD_NOA;
+            break;
+        } else {
+            c->proxy_state = PROXY_STATE_RSPD;
+        }
         // fallthrough
     case PROXY_STATE_RSPD:
     case PROXY_STATE_RSPD_INPUT:    /* 交互式命令输入的回显数据正常审计 */
         rfd_rspd_handle(ssh, c, buf, len);
+        break;
+    case PROXY_STATE_RSPD_NOA:
+        rfd_rspd_handle(ssh, c, buf, len);
+        if (newline == NULL) {
+            newline = sshbuf_new();
+        }
+        vc_data_to_sshbuf(c->vc, newline);
+        //debug_p("newline[%d]>>%s", sshbuf_len(newline), sshbuf_ptr(newline));
+        reset_vc_status(c->vc);
+        if (strncasecmp(sshbuf_ptr(c->prompt), sshbuf_ptr(newline), sshbuf_len(c->prompt)) == 0) {
+            c->proxy_state = PROXY_STATE_CMD_START;
+        }
+        sshbuf_reset(newline);
         break;
     case PROXY_STATE_CMD_START:
         /* Not to do anything */

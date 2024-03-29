@@ -41,6 +41,7 @@
 #ifdef PROXY_ENABLE
 #include "cmd-define.h"
 #include "cmd-vc.h"
+#include "cmd-match.h"
 #endif
 
 /* Definitions for channel types. */
@@ -228,6 +229,8 @@ struct Channel {
     struct sshbuf *prompt;  /* 记录远程服务器的prompt */
     struct sshbuf *cmd;
     struct sshbuf *rspd;
+
+    cmdctrl_st *pcmdctrl;   /* 用来加载命令控制结构 */
 
 	sftp_cache_st sftp_cache;
 	/* 代理信息 */

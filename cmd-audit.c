@@ -10,19 +10,20 @@
 
 int cmd_audit_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 {
+    int ret = 0;
     proxy_info_st *pinfo = &(c->proxy_info);
     switch (pinfo->pt) {
     case PT_SFTP:
-        cmd_sftp_wfd_handle(ssh, c, buf, len);
+        ret = cmd_sftp_wfd_handle(ssh, c, buf, len);
         break;
     case PT_SSH:
-        cmd_ssh_wfd_handle(ssh, c, buf, len);
+        ret = cmd_ssh_wfd_handle(ssh, c, buf, len);
         break;
     default:
         break;
     }
 
-    return 0;
+    return ret;
 }
 
 int cmd_audit_rfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)

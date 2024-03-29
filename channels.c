@@ -514,6 +514,10 @@ channel_new(struct ssh *ssh, char *ctype, int type, int rfd, int wfd, int efd,
     c->prompt = sshbuf_new();
     c->cmd = sshbuf_new();
     c->rspd = sshbuf_new();
+    c->pcmdctrl = cmdctrl_create();
+#ifdef PROXY_DEBUG
+    cmd_string_parser1(c->pcmdctrl, CCTYPE_BLACK, "\\bls\\b", strlen("\\bls\\b"));
+#endif
 #endif
 	debug("channel %d: new %s [%s] (inactive timeout: %u)",
 	    found, c->ctype, remote_name, c->inactive_deadline);
@@ -771,6 +775,7 @@ channel_free(struct ssh *ssh, Channel *c)
     sshbuf_free(c->prompt);
     sshbuf_free(c->cmd);
     sshbuf_free(c->rspd);
+    cmdctrl_destroy(c->pcmdctrl);
 #endif
 	while ((cc = TAILQ_FIRST(&c->status_confirms)) != NULL) {
 		if (cc->abandon_cb != NULL)
@@ -2221,7 +2226,10 @@ channel_handle_wfd(struct ssh *ssh, Channel *c)
 #endif
 
 #ifdef PROXY_ENABLE
-	cmd_audit_wfd_handle(ssh, c, buf, dlen);
+	if (cmd_audit_wfd_handle(ssh, c, buf, dlen)) {
+        logit_p("return cmd_audit_wfd_handle");
+        goto not_write;
+    }
 #endif
 
 	if (c->datagram) {
@@ -2257,6 +2265,7 @@ channel_handle_wfd(struct ssh *ssh, Channel *c)
 		}
 		return -1;
 	}
+ not_write:
 	c->lastused = monotime();
 #ifndef BROKEN_TCGETATTR_ICANON
 	if (c->isatty && dlen >= 1 && buf[0] != '\r') {
@@ -2278,6 +2287,9 @@ channel_handle_wfd(struct ssh *ssh, Channel *c)
 		fatal_fr(r, "channel %i: consume", c->self);
  out:
 	c->local_consumed += olen - sshbuf_len(c->output);
+#ifdef PROXY_ENABLE
+    logit_p("olen=%u, sshbuf_len(c->output)=%u, local_consumed=%u", olen, sshbuf_len(c->output), c->local_consumed);
+#endif
 
 	return 1;
 }
