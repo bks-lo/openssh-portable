@@ -84,6 +84,7 @@ static int need_input(Channel *c)
     const char *arr[] = {
         ": ",           /* 登录提示符 */
         "? [y/n] ",     /* 确认是否执行命令 */
+        "[y/n]? ",
     };
 
     int i = 0;
@@ -97,21 +98,62 @@ static int need_input(Channel *c)
     return 0;
 }
 
-static int cmd_is_vi(struct sshbuf *cmd)
+static int cmd_is_vi(const char *cmd, int len)
 {
-    const char *ptr = sshbuf_ptr(cmd);
-    int len = sshbuf_len(cmd);
-
-
-    if (ptr[0] == 'v' && ptr[1] == 'i') {
-        if (ptr[2] == ' ' && len > 3) {
+    if (cmd[1] == 'i') {
+        if (cmd[2] == ' ' && len > 3) {
             return 1;
-        } else if (ptr[2] == 'm' && ptr[3] == ' ' && len > 4) {
+        } else if (cmd[2] == 'm' && cmd[3] == ' ' && len > 4) {
             return 1;
         }
     }
 
     return 0;
+}
+
+static int cmd_is_rz(const char *cmd, int len)
+{
+    if (cmd[1] == 'z' && len > 2) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static int cmd_is_sz(const char *cmd, int len)
+{
+    if (cmd[1] == 'z' && len > 2) {
+        return 1;
+    }
+
+    return 0;
+}
+
+/**
+ * \brief cmd
+ *
+ * \param [in|out] cmd
+ * \return int
+ */
+static int is_non_audit_response(struct sshbuf *cmd)
+{
+    const char *ptr = sshbuf_ptr(cmd);
+    int len = sshbuf_len(cmd);
+
+    int ret = 0;
+    switch (ptr[0]) {
+    case 'v':
+        ret = cmd_is_vi(ptr, len);
+        break;
+    case 'r':
+        ret = cmd_is_rz(ptr, len);
+        break;
+    case 's':
+        ret = cmd_is_sz(ptr, len);
+        break;
+    }
+
+    return ret;
 }
 
 static int cmd_match(Channel *c, struct sshbuf *cmd)
@@ -129,16 +171,9 @@ static int cmd_match(Channel *c, struct sshbuf *cmd)
     snprintf(cmd_deny, sizeof(cmd_deny), "\r\nPermission denied by rule [%s]", pcmd_ret->cmd);
     sshbuf_put(c->input, cmd_deny, strlen(cmd_deny));
 
-    // send to server
-    #if 0
-    char clearline[] = {0x1b, 0x5b, 0x32, 0x4b};
-    //char clearline[] = {0x1b};
-    write(c->wfd, clearline, sizeof(clearline));
-    //write(c->wfd, '\r', 1);
-    #else
+    // send to server [ctrl + c]
     char clearline[1] = {0x03};
     write(c->wfd, clearline, 1);
-    #endif
 
     return 1;
 }
@@ -198,7 +233,7 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
                 c->proxy_state = PROXY_STATE_LOGIN_PROMPT;
                 return -1;
             }
-            if (cmd_is_vi(c->cmd)) {
+            if (is_non_audit_response(c->cmd)) {
                 c->proxy_state = PROXY_STATE_RSPD_NOA;
             } else {
                 c->proxy_state = PROXY_STATE_RSPD;
@@ -266,7 +301,7 @@ int cmd_ssh_rfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         }
 
         proxy_cmd_end(c);
-        if (cmd_is_vi(c->cmd)) {
+        if (is_non_audit_response(c->cmd)) {
             c->proxy_state = PROXY_STATE_RSPD_NOA;
             break;
         } else {
