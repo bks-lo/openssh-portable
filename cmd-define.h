@@ -18,7 +18,7 @@ typedef enum proxy_state_t
     PROXY_STATE_LOGIN,          /* 登录阶段 */
     PROXY_STATE_LOGIN_PROMPT,   /* 记录命令行提示符 */
     PROXY_STATE_CMD_START,      /* 开始输入命令 */
-	PROXY_STATE_CMD,            /* 输入命令阶段 */
+    PROXY_STATE_CMD,            /* 输入命令阶段 */
     PROXY_STATE_CMD_ECHO_START, /* 开始在回显中提取命令*/
     PROXY_STATE_CMD_ECHO,       /* 在回显中提取命令阶段 */
     PROXY_STATE_RSPD,           /* 记录响应数据 */
@@ -130,6 +130,7 @@ typedef struct sftp_cache_st
     int tlen;               // buf的空间大小
     int offset;             // 当前已缓存的偏移
     int needlen;            // 需要下一个分包的长度 = tlen - offset
+    int id;                 // 第一包解析出的 id
 } sftp_cache_st;
 
 int proxy_cmd_get(char *cmd, int clen, proxy_info_st *pinfo, const char *command);

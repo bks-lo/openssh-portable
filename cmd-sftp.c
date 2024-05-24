@@ -14,7 +14,176 @@ typedef struct sftp_head_st
 } __attribute__((packed)) sftp_head_st;
 #pragma pack()
 
-typedef int (*sftp_cmd_cb)(Channel *c, const char *data, int dlen);
+typedef int (*sftp_cmd_cb)(Channel *c, const char *data, int dlen, int id);
+
+
+/* handle handles */
+
+typedef struct Handle Handle;
+struct Handle {
+    int use;
+    int flags;
+    char *name;
+    u_int64_t bytes_read, bytes_write;
+    int next_unused;
+};
+
+enum {
+    HANDLE_UNUSED,
+    HANDLE_DIR,
+    HANDLE_FILE
+};
+
+static Handle *handles = NULL;
+static u_int num_handles = 0;
+static int first_unused_handle = -1;
+
+static void handle_unused(int i)
+{
+    handles[i].use = HANDLE_UNUSED;
+    handles[i].next_unused = first_unused_handle;
+    first_unused_handle = i;
+}
+
+static int
+handle_new(int use, const char *name, int flags)
+{
+    int i;
+
+    if (first_unused_handle == -1) {
+        if (num_handles + 1 <= num_handles)
+            return -1;
+        num_handles++;
+        handles = xreallocarray(handles, num_handles, sizeof(Handle));
+        handle_unused(num_handles - 1);
+    }
+
+    i = first_unused_handle;
+    first_unused_handle = handles[i].next_unused;
+
+    handles[i].use = use;
+    handles[i].flags = flags;
+    handles[i].name = xstrdup(name);
+    handles[i].bytes_read = handles[i].bytes_write = 0;
+
+    return i;
+}
+
+static int
+handle_is_ok(int i, int type)
+{
+    return i >= 0 && (u_int)i < num_handles && handles[i].use == type;
+}
+
+static int
+handle_to_string(int handle, u_char **stringp, int *hlenp)
+{
+    if (stringp == NULL || hlenp == NULL)
+        return -1;
+    *stringp = xmalloc(sizeof(int32_t));
+    put_u32(*stringp, handle);
+    *hlenp = sizeof(int32_t);
+    return 0;
+}
+
+static int
+handle_from_string(const u_char *handle, u_int hlen)
+{
+    int val;
+
+    if (hlen != sizeof(int32_t))
+        return -1;
+    val = get_u32(handle);
+    if (handle_is_ok(val, HANDLE_FILE) ||
+        handle_is_ok(val, HANDLE_DIR))
+        return val;
+    return -1;
+}
+
+static char *
+handle_to_name(int handle)
+{
+    if (handle_is_ok(handle, HANDLE_DIR)||
+        handle_is_ok(handle, HANDLE_FILE))
+        return handles[handle].name;
+    return NULL;
+}
+
+
+static int
+handle_to_flags(int handle)
+{
+    if (handle_is_ok(handle, HANDLE_FILE))
+        return handles[handle].flags;
+    return 0;
+}
+
+static void
+handle_update_read(int handle, ssize_t bytes)
+{
+    if (handle_is_ok(handle, HANDLE_FILE) && bytes > 0)
+        handles[handle].bytes_read += bytes;
+}
+
+static void
+handle_update_write(int handle, ssize_t bytes)
+{
+    if (handle_is_ok(handle, HANDLE_FILE) && bytes > 0)
+        handles[handle].bytes_write += bytes;
+}
+
+static u_int64_t
+handle_bytes_read(int handle)
+{
+    if (handle_is_ok(handle, HANDLE_FILE))
+        return (handles[handle].bytes_read);
+    return 0;
+}
+
+static u_int64_t
+handle_bytes_write(int handle)
+{
+    if (handle_is_ok(handle, HANDLE_FILE))
+        return (handles[handle].bytes_write);
+    return 0;
+}
+
+static int
+handle_close(int handle)
+{
+    int ret = -1;
+
+    if (handle_is_ok(handle, HANDLE_FILE)) {
+        ret = 0;
+        free(handles[handle].name);
+        handle_unused(handle);
+    } else if (handle_is_ok(handle, HANDLE_DIR)) {
+        ret = 0;
+        free(handles[handle].name);
+        handle_unused(handle);
+    } else {
+        errno = ENOENT;
+    }
+    return ret;
+}
+
+static int get_handle(const char *buf, int len, int *hp)
+{
+    u_char *handle;
+    char *out_s;
+    int out_l;
+
+    PKT_GET_LEN4_STRING(out_s, out_l, buf, len, -1);
+    handle = xmalloc(out_l + 1);
+    memcpy(handle, out_s, out_l);
+    out_s[out_l] = 0;
+
+    *hp = -1;
+    if (out_l < 256)
+        *hp = handle_from_string(handle, out_l);
+    free(handle);
+    return 0;
+}
 
 /**
  * \brief 判断是否为sftp报文，不支持分包及合包的情况
@@ -104,21 +273,26 @@ int is_sftp_version_type(const char *buf, int len)
  * \brief 获取sftp 头部信息
  *
  * \param [in] buf  数据包内容
- * \param [in|out] plen 数据包长度，返回去掉头部的数据包长度
- * \param [out] pdlen   数据包内容长度，（已去掉头部的数据包内容长度）
+ * \param [in|out] pktlen 数据包长度，返回去掉头部的数据包长度
+ * \param [out] pdulen   数据包内容长度，（已去掉头部的数据包内容长度），
+ *                      如果没有分包， pktlen == pdulen, 如果分包 pktlen < pdulen
  * \param [out] ptype   数据包类型
  * \return const char*  成功：返回去掉头部的数据包内容，失败：NULL
+ *
+ * in : buf pktlen
+ * out: buf pktlen pdulen type id
  */
-const char *sftp_head_info(const char *buf, int *plen, int *pdlen, uint8_t *ptype)
+const char *sftp_head_info(const char *buf, int *pktlen, sftp_head_st *sftph)
 {
     const char *data = buf;
-    size_t tlen = (size_t)*plen;
+    size_t tlen = (size_t)*pktlen;
     int offset = 0;
     int dlen = 0;
     int dlen_min = (int)(sizeof(uint32_t) + sizeof(uint8_t));
 
     //debug_p("sftp_head_info: len=%d, sizeof(sftp_head_st)=%d", tlen, sizeof(sftp_head_st));
     if (tlen < sizeof(sftp_head_st)) {
+        error_p("sftp_head_info: tlen=%d < sizeof(sftp_head_st)=%d", tlen, sizeof(sftp_head_st));
         return NULL;
     }
 
@@ -126,7 +300,8 @@ const char *sftp_head_info(const char *buf, int *plen, int *pdlen, uint8_t *ptyp
     dlen = ntohl(head->dlen);
 
     //debug_p("sftp_head_info: sftp_head_st {.dlen=%d, .type=%u}", dlen, head->type);
-    if (dlen < dlen_min) {
+    if (dlen <= dlen_min) {
+        error_p("sftp_head_info: dlen=%d <= dlen_min=%d", dlen, dlen_min);
         return NULL;
     }
 
@@ -135,92 +310,194 @@ const char *sftp_head_info(const char *buf, int *plen, int *pdlen, uint8_t *ptyp
        sftp data struct: 1B type + 4B id + data[data_len - 5B]
     */
 
-#if 0
-    if (tlen < dlen + sizeof(uint32_t)) {
-        debug3("need cache, sftp tlen[%d] < dlen[%d]", tlen, dlen);
-        return 0;
-    }
-#endif
-
     /* Remove the head structure */
     data += sizeof(sftp_head_st);
     tlen -= sizeof(sftp_head_st);
     dlen -= dlen_min;
     //debug_p("sftp_head_info: tlen=%d, dlen=%d", tlen, dlen);
 
-    if (plen != NULL)
-        *plen = tlen;
+    if (pktlen != NULL)
+        *pktlen = tlen;
 
-    if (pdlen != NULL)
-        *pdlen = dlen;
-
-    if (ptype != NULL)
-        *ptype = head->type;
+    sftph->dlen = dlen;
+    sftph->type = head->type;
+    sftph->id   = ntohl(head->id);
 
     return data;
 }
 
-int sftp_open(Channel *c, const char *buf, int len)
+int sftp_open(Channel *c, const u_char *buf, int len, int id)
 {
     size_t tlen = (size_t)len;
     const char *data = buf;
     uint32_t fn_len = 0;
     char file_tmp[512] = {0};
     proxy_info_st *pinfo = &(c->proxy_info);
+    const char *str = NULL;
+    uint32_t flags = 0;
 
-    if (tlen < sizeof(uint32_t)) {
-        error("need cache, sftp tlen[%zu] < sizeof(uint32_t)", tlen);
-        return 0;
+    PKT_GET_LEN4_STRING(str, fn_len, data, tlen, -1);
+    snprintf(file_tmp, sizeof(file_tmp), "%.*s", fn_len, str);
+
+    /* flags u32 */
+    PKT_GET_U32(flags, data, tlen, -1);
+
+    if ((flags & SSH2_FXF_READ) && (flags & SSH2_FXF_WRITE)) {
+        debug_p("sftp open file: flags=0x%x, read|write", flags);
+    } else if (flags & SSH2_FXF_READ) {
+        debug_p("sftp open file: flags=0x%x, read", flags);
+    } else if (flags & SSH2_FXF_WRITE) {
+        debug_p("sftp open file: flags=0x%x, write", flags);
     }
 
-    fn_len = PEEK_U32(data);
-    data += sizeof(uint32_t);
-    tlen -= sizeof(uint32_t);
-
-    if (tlen < fn_len) {
-        error("need cache, sftp tlen[%zu] < fn_len[%u]", tlen, fn_len);
-        return 0;
+    if (flags & SSH2_FXF_APPEND) {
+        debug_p("sftp open file: flags=0x%x, append", flags);
     }
 
-    snprintf(file_tmp, sizeof(file_tmp), "%.*s", fn_len, data);
-    debug_p("sftp open file: %s", file_tmp);
+    if (flags & SSH2_FXF_CREAT) {
+        debug_p("sftp open file: flags=0x%x, creat", flags);
+    }
+
+    if (flags & SSH2_FXF_TRUNC) {
+        debug_p("sftp open file: flags=0x%x, trunc", flags);
+    }
+
+    if (flags & SSH2_FXF_EXCL) {
+        debug_p("sftp open file: flags=0x%x, excl", flags);
+    }
+
+    int handle = handle_new(HANDLE_FILE, file_tmp, flags);
 
     // 转码
-
     // 组装还原文件路径
-
     // 判断是否可以传输文件
 
-    cmd_log_send(c, file_tmp, (int)strlen(file_tmp));
+    char log[1024] = {0};
+    snprintf(log, sizeof(log), "open file[%s] handle[%d]", file_tmp, handle);
+    debug_p("log===> %s", log);
+    cmd_log_send(c, log, (int)strlen(log));
     return 0;
 }
 
-int sftp_open_dir(Channel *c, const char *buf, int len)
+int sftp_open_dir(Channel *c, const char *buf, int len, int id)
 {
-    int sint = (int)sizeof(int);
-    if (sint >= len) {
-        return 0;
+    int dlen = 0;
+    const char *dirname = NULL;
+    PKT_GET_LEN4_STRING(dirname, dlen, buf, len, -1);
+
+    debug_p("opendir \"%s\"", dirname);
+    int handle = handle_new(HANDLE_DIR, dirname, 0);
+    cmd_log_send(c, dirname, strlen(dirname));
+    return 0;
+}
+
+int sftp_write(Channel *c, const char *buf, int len, int id)
+{
+    int handle = 0;
+    if (get_handle(buf, len, &handle) != 0) {
+        error_p("get_handle failed");
+        return -1;
     }
 
-    int dir_len = PEEK_U32(buf);
-    if (dir_len + sint != len) {
-        debug_p("dir len[%d] != buf len[%d]", dir_len, len - sint);
-        return 0;
-    }
-    buf += sint;
-    len -= sint;
+    const u_char *fname = handle_to_name(handle);
+    debug_p("write file [%s]", fname);
 
-    const char *dir = buf;
-    debug_p("dir = %s", dir);
-    cmd_log_send(c, dir, strlen(dir));
+    cmd_log_send(c, fname, strlen(fname));
     return 0;
 }
 
-int sftp_write(Channel *c, const char *buf, int len)
+static int sftp_read(Channel *c, const char *buf, int len, int id)
 {
+    int handle = 0;
+    if (get_handle(buf, len, &handle) != 0) {
+        error_p("get_handle failed");
+        return -1;
+    }
+
+    const u_char *fname = handle_to_name(handle);
+    debug_p("read file [%s]", fname);
+
+    cmd_log_send(c, fname, strlen(fname));
     return 0;
 }
 
+static int sftp_close(Channel *c, const char *buf, int len, int id)
+{
+    int handle = 0;
+    if (get_handle(buf, len, &handle) != 0) {
+        error_p("get_handle failed");
+        return -1;
+    }
+
+     if (handle_close(handle) != 0) {
+        error_p("handle_close failed");
+        return -1;
+    }
+
+    cmd_log_send(c, NULL, 0);
+    return 0;
+}
+
+static int sftp_remove(Channel *c, const char *buf, int len, int id)
+{
+    int flen = 0;
+    const char *fname = NULL;
+
+    PKT_GET_LEN4_STRING(fname, flen, buf, len, -1);
+    debug_p("request %u: remove file [%s]", id, fname);
+
+    cmd_log_send(c, fname, strlen(fname));
+    return 0;
+}
+
+static int sftp_mkdir(Channel *c, const char *buf, int len, int id)
+{
+    int flen = 0;
+    const char *fname = NULL;
+    PKT_GET_LEN4_STRING(fname, flen, buf, len, -1);
+
+    debug_p("request %u: mkdir [%s]", id, fname);
+    cmd_log_send(c, fname, strlen(fname));
+    return 0;
+}
+
+static int sftp_rmdir(Channel *c, const char *buf, int len, int id)
+{
+    int flen = 0;
+    const char *fname = NULL;
+    PKT_GET_LEN4_STRING(fname, flen, buf, len, -1);
+
+    debug_p("request %u: rmdir [%s]", id, fname);
+    cmd_log_send(c, fname, strlen(fname));
+    return 0;
+}
+
+static int sftp_rename(Channel *c, const char *buf, int len, int id)
+{
+    int oldlen = 0;
+    int newlen = 0;
+    const char *oldpath = NULL;
+    const char *newpath = NULL;
+    PKT_GET_LEN4_STRING(oldpath, oldlen, buf, len, -1);
+    PKT_GET_LEN4_STRING(newpath, newlen, buf, len, -1);
+
+    debug_p("rename old \"%s\" new \"%s\"", oldpath, newpath);
+    cmd_log_send(c, newpath, strlen(newpath));
+    return 0;
+}
+
+static int sftp_readdir(Channel *c, const char *buf, int len)
+{
+    int handle = 0;
+    if (get_handle(buf, len, &handle) != 0) {
+        error_p("get_handle failed");
+        return -1;
+    }
+
+    const char *dirname = handle_to_name(handle);
+    debug_p("readdir dirname \"%s\"", dirname);
+    return 0;
+}
 sftp_cmd_cb sftp_reqst_handler_get(uint8_t type)
 {
     sftp_cmd_cb ret = NULL;
@@ -232,21 +509,29 @@ sftp_cmd_cb sftp_reqst_handler_get(uint8_t type)
         ret = sftp_write;
         break;
     case SSH2_FXP_CLOSE:
+        ret = sftp_close;
         break;
     case SSH2_FXP_REMOVE:
+        ret = sftp_remove;
         break;
     case SSH2_FXP_MKDIR:
+        ret = sftp_mkdir;
         break;
     case SSH2_FXP_RMDIR:
+        ret = sftp_rmdir;
         break;
     case SSH2_FXP_RENAME:
+        ret = sftp_rename;
         break;
     case SSH2_FXP_OPENDIR:
         ret = sftp_open_dir;
         break;
     case SSH2_FXP_READDIR:
+        ret = sftp_readdir;
         break;
-
+    case SSH2_FXP_READ:
+        ret = sftp_read;
+        break;
     default:
         break;
     }
@@ -311,7 +596,7 @@ static int sftp_cache_destroy(sftp_cache_st *cache)
     return 0;
 }
 
-static int sftp_cache_init(sftp_cache_st *cache, const char *data, int dlen, int left, sftp_cmd_cb cmd_cb)
+static int sftp_cache_init(sftp_cache_st *cache, const char *data, int dlen, int left, int id, sftp_cmd_cb cmd_cb)
 {
     if (dlen <= left) {
         cache->enable = 0;
@@ -323,6 +608,7 @@ static int sftp_cache_init(sftp_cache_st *cache, const char *data, int dlen, int
     }
 
     cache->enable = 1;
+    cache->id = id;
     if (cmd_cb) {
         cache->buf = (char *)malloc(dlen);
         cache->cmd_cb = cmd_cb;
@@ -364,7 +650,7 @@ static const char *sftp_cache_merge(Channel *c, const char *buf, int *plen)
         *plen = len - nlen;
         if (cmd_cb != NULL) {
             memcpy(cache->buf + cache->offset, buf, nlen);
-            cmd_cb(c, cache->buf, cache->tlen);
+            cmd_cb(c, cache->buf, cache->tlen, cache->id);
         }
         sftp_cache_destroy(cache);
         return buf + nlen;
@@ -380,14 +666,13 @@ static const char *sftp_cache_merge(Channel *c, const char *buf, int *plen)
  * \param [in|out] len
  * \return int  0:继续发送此包，-1：阻断此包   1：缓存此包不发送，待后续发送
  */
-int sftp_reqst_handle(Channel *c, const char *buf, int len)
+int sftp_reqst_handle(Channel *c, const u_char *buf, int len)
 {
-    const char *data = buf;
+    const u_char *data = buf;
     int tlen = len;
-    int dlen = 0;
     int left = 0;
-    uint8_t type = 0;
     sftp_cmd_cb cmd_cb = NULL;
+    sftp_head_st sftph = {0};
 
     data = sftp_cache_merge(c, data, &tlen);
     if (data == NULL) {
@@ -396,32 +681,26 @@ int sftp_reqst_handle(Channel *c, const char *buf, int len)
 
     left = tlen;
     while (left) {
-        data = sftp_head_info(data, &left, &dlen, &type);
+        data = sftp_head_info(data, &left, &sftph);
         if (data == NULL) {
             return -1;
         }
 
-        cmd_cb = sftp_reqst_handler_get(type);
+        cmd_cb = sftp_reqst_handler_get(sftph.type);
+        if (cmd_cb == NULL) {
+            return 0;
+        }
+
         /* cache */
-        if (sftp_cache_init(&(c->sftp_cache), data, dlen, left, cmd_cb)) {
+        if (sftp_cache_init(&(c->sftp_cache), data, sftph.dlen, left, sftph.id, cmd_cb)) {
             return 1;
         }
-        if (cmd_cb)
-            cmd_cb(c, data, dlen);
 
-        left -= dlen;
-        data += dlen;
+        cmd_cb(c, data, sftph.dlen, sftph.id);
+        left -= sftph.dlen;
+        data += sftph.dlen;
     }
     return 0;
-}
-
-int cmd_sftp_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
-{
-    if (c->proxy_state != PROXY_STATE_CMD) {
-        return 0;
-    }
-
-    return sftp_reqst_handle(c, buf, len);
 }
 
 int cmd_sftp_login_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
@@ -433,8 +712,28 @@ int cmd_sftp_login_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
     return 0;
 }
 
-int cmd_sftp_rfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
+
+#define SFTP_PROXY_DIRECT 0
+
+int cmd_sftp_wfd_handle(struct ssh *ssh, Channel *c, const u_char *buf, int len)
 {
+#if SFTP_PROXY_DIRECT
+    return 0;
+#endif
+
+    if (c->proxy_state != PROXY_STATE_CMD) {
+        return 0;
+    }
+
+    return sftp_reqst_handle(c, buf, len);
+}
+
+int cmd_sftp_rfd_handle(struct ssh *ssh, Channel *c, const u_char *buf, int len)
+{
+#if SFTP_PROXY_DIRECT
+    return 0;
+#endif
+
     switch (c->proxy_state) {
     case PROXY_STATE_LOGIN:
         cmd_sftp_login_handle(ssh, c, buf, len);
