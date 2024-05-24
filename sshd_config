@@ -60,7 +60,8 @@ PubkeyAuthentication    no
 #PermitEmptyPasswords no
 
 # Change to no to disable s/key passwords
-#KbdInteractiveAuthentication yes
+# 禁止使用 keyboard-interactive （键盘交互）认证方法
+KbdInteractiveAuthentication no
 
 # Kerberos options
 #KerberosAuthentication no

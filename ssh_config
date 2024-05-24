@@ -52,6 +52,9 @@ Host *
     # 认证方法列表中只支持密码登录
     PreferredAuthentications password
 
+    # 禁止使用 keyboard-interactive （键盘交互）认证方法
+    Kbdinteractiveauthentication no
+
     # 只允许密码认证1次
     NumberOfPasswordPrompts 1
 
