@@ -543,13 +543,13 @@ void pr_hexdump(const char* p, int len)
 
         for (i = 0; i < thisline; i++) {
             if (i == 8) {
-                PKT_PRINT(" ");
+                PKT_PRINT("  ");
             }
 
             #if PKT_PRINT_UN
             PKT_PRINT("%02x ", (unsigned char)line[i]);
             #elif PKT_PRINT_16
-            PKT_PRINT("0x%02x, ", (unsigned char)line[i]);
+            PKT_PRINT("0x%02x,", (unsigned char)line[i]);
             #else
             PKT_PRINT("%3u, ", (unsigned char)line[i]);
             #endif
@@ -557,27 +557,27 @@ void pr_hexdump(const char* p, int len)
 
         for (; i < 16; i++) {
 			if (i == 8) {
-                PKT_PRINT(" ");
+                PKT_PRINT("  ");
             }
 
             #if PKT_PRINT_UN
             PKT_PRINT("   ");
             #elif PKT_PRINT_16
-            PKT_PRINT("      ");
+            PKT_PRINT("     ");
             #else
             PKT_PRINT("     ");
             #endif
         }
 
-        PKT_PRINT("//");
+        PKT_PRINT(" |");
         for (i = 0; i < thisline; i++) {
             if (i == 8) {
-                PKT_PRINT(" ");
+                PKT_PRINT("  ");
             }
 
             PKT_PRINT("%c", (line[i] >= 0x20 && line[i] < 0x7f) ? line[i] : '.');
         }
-        PKT_PRINT("\n");
+        PKT_PRINT("|\n");
         offset += thisline;
         line += thisline;
     }
