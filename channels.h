@@ -222,7 +222,7 @@ struct Channel {
 	int is_child;
 
 	/* 代理状态，未登录，登录成功，失败等 */
-	proxy_state_t proxy_state;
+	int proxy_state;
 
     /* 虚拟终端信息 */
     struct vc_data *vc;
@@ -235,6 +235,7 @@ struct Channel {
 	sftp_cache_st sftp_cache;
 	/* 代理信息 */
 	proxy_info_st proxy_info;
+
 #endif
 };
 

@@ -516,6 +516,7 @@ channel_new(struct ssh *ssh, char *ctype, int type, int rfd, int wfd, int efd,
     c->rspd = sshbuf_new();
     c->pcmdctrl = cmdctrl_create();
 #ifdef PROXY_DEBUG
+    // TODO： parser cmd match rule
     cmd_string_parser1(c->pcmdctrl, CCTYPE_BLACK, "\\bls\\b", strlen("\\bls\\b"));
 #endif
 #endif
