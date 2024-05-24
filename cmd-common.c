@@ -675,10 +675,10 @@ int proxy_cmd_get(char *cmd, int clen, proxy_info_st *pinfo, const char *command
         snprintf(cmd, clen, SSH_NOPWD_PROXY_CMD" %s", pinfo->username, pinfo->hostname, pinfo->port, suffix);
         break;
     case PT_SFTP:
-        snprintf(cmd, clen, SSH_NOPWD_PROXY_CMD" -s sftp", pinfo->username, pinfo->hostname, pinfo->port);
+        snprintf(cmd, clen, SSH_PROXY_CMD" -s sftp", pinfo->username, pinfo->hostname, pinfo->port, pinfo->password);
         break;
     case PT_SCP:
-        snprintf(cmd, clen, SSH_NOPWD_PROXY_CMD" %s", pinfo->username, pinfo->hostname, pinfo->port, suffix);
+        snprintf(cmd, clen, SSH_PROXY_CMD" %s", pinfo->username, pinfo->hostname, pinfo->port, pinfo->password, suffix);
         break;
     case PT_FTP:
         //snprintf(cmd, clen, "/home/xiaoke/netkit-ftp/ftp/ftp -H 192.168.45.24 -u root -s %s", pinfo->password);
