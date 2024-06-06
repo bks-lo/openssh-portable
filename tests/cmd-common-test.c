@@ -75,13 +75,18 @@ START_TEST(test_proxy_info)
 {
     proxy_info_st *pinfo = proxy_info_init();
     ck_assert_msg(pinfo != NULL, "pinfo == NULL");
-    ck_assert_msg(pinfo->redis_conn != NULL, "pinfo->redis_conn == NULL");
-    ck_assert_msg(pinfo->mysql_conn != NULL, "pinfo->mysql_conn == NULL");
 
-    int ret = Redis_Exec(pinfo->redis_conn, "set  connection_session::cmd-common-test-key  {\"protocol\":\"ssh\",\"hostname\":\"1.2.3.4\",\"password\":\"AAbbccDD%%d@s\",\"port\":\"22\",\"username\":\"root\",\"remote_ip\":\"192.168.68.1\",\"charset\":\"UTF-8\",\"sid\":\"cmd-common-test-key\",\"uid\":\"uid-cmd-common-test-key\"}");
+
+    proxy_conn_fd_st conn_fd_st = {0};
+    proxy_conn_fd_st *conn_fd = &conn_fd_st;
+    proxy_conn_fd_init(conn_fd);
+    ck_assert_msg(conn_fd->redis_conn != NULL, "pinfo->redis_conn == NULL");
+    ck_assert_msg(conn_fd->mysql_conn != NULL, "pinfo->mysql_conn == NULL");
+
+    int ret = Redis_Exec(conn_fd->redis_conn, "set  connection_session::cmd-common-test-key  {\"protocol\":\"ssh\",\"hostname\":\"1.2.3.4\",\"password\":\"AAbbccDD%%d@s\",\"port\":\"22\",\"username\":\"root\",\"remote_ip\":\"192.168.68.1\",\"charset\":\"UTF-8\",\"sid\":\"cmd-common-test-key\",\"uid\":\"uid-cmd-common-test-key\"}");
     ck_assert_msg(ret == 0, "ret != 0");
 
-    ret = get_proxy_info_by_sid(pinfo, "cmd-common-test-key");
+    ret = get_proxy_info_by_sid(conn_fd->redis_conn, pinfo, "cmd-common-test-key");
     ck_assert_msg(ret == 0, "ret != 0");
 
     ck_assert_msg(strcmp(pinfo->sid, "cmd-common-test-key") == 0, "pinfo->sid[%s] invalid", pinfo->sid);
@@ -91,7 +96,7 @@ START_TEST(test_proxy_info)
     ret = proxy_auth_password(pinfo, "cmd-common-test-key");
     ck_assert_msg(ret == -1, "ret != -1");
 
-    ret = Redis_Exec(pinfo->redis_conn, "del  connection_session::cmd-common-test-key");
+    ret = Redis_Exec(conn_fd->redis_conn, "del  connection_session::cmd-common-test-key");
     ck_assert_msg(ret == 0, "ret != 0");
 }
 END_TEST

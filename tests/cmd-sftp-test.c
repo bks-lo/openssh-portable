@@ -6,6 +6,9 @@ START_TEST(test_sftp_reqst_handle)
             "===============================================\n");
     // int sftp_reqst_handle(Channel *c, const char *buf, int len)
     Channel cc = {0};
+    cc.proxy_data = proxy_sftp_pd_create();
+    cc.proxy_dfunc = proxy_sftp_pd_destroy;
+
     char buf[] = {0x00, 0x00, 0x00, 0x0a, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x2e};
     int ret = sftp_reqst_handle(&cc, buf, sizeof(buf));
     ck_assert_msg(ret == 0, "ret != 0");

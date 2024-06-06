@@ -14,11 +14,42 @@ typedef struct sftp_head_st
 } __attribute__((packed)) sftp_head_st;
 #pragma pack()
 
+
+struct proxy_sftp_st
+{
+    uint8_t enable;         // 是否启用这个cache结构
+    char *buf;              // 缓存空间，已经为下一个分包，开辟好了空间，下个分包到达后直接填充
+    void *cmd_cb;           // 缓存数据包的处理函数，为空 代表 不关心接下来的缓存内容，所以不用缓存数据，只用记录偏移就可以。
+    int tlen;               // buf的空间大小
+    int offset;             // 当前已缓存的偏移
+    int needlen;            // 需要下一个分包的长度 = tlen - offset
+    int id;                 // 第一包解析出的 id
+};
+
+proxy_sftp_st *proxy_sftp_pd_create()
+{
+    proxy_sftp_st *sftp_pd = xmalloc(sizeof(proxy_sftp_st));
+    memset(sftp_pd, 0, sizeof(proxy_sftp_st));
+
+    return sftp_pd;
+}
+
+void *proxy_sftp_pd_destroy(void *private_data)
+{
+    proxy_sftp_st *sftp_pd = (proxy_sftp_st *)private_data;
+    if (sftp_pd == NULL)
+        return ;
+
+    if (sftp_pd->buf) {
+        free(sftp_pd);
+    }
+
+    free(sftp_pd);
+}
+
 typedef int (*sftp_cmd_cb)(Channel *c, const char *data, int dlen, int id);
 
-
 /* handle handles */
-
 typedef struct Handle Handle;
 struct Handle {
     int use;
@@ -332,7 +363,7 @@ int sftp_open(Channel *c, const u_char *buf, int len, int id)
     const char *data = buf;
     uint32_t fn_len = 0;
     char file_tmp[512] = {0};
-    proxy_info_st *pinfo = &(c->proxy_info);
+    proxy_info_st *pinfo = c->proxy_info;
     const char *str = NULL;
     uint32_t flags = 0;
 
@@ -415,8 +446,12 @@ static int sftp_read(Channel *c, const char *buf, int len, int id)
     }
 
     const u_char *fname = handle_to_name(handle);
-    debug_p("read file [%s]", fname);
+    if (fname == NULL) {
+        error_p("handle_to_name failed");
+        return -1;
+    }
 
+    debug_p("read file [%s]", fname);
     cmd_log_send(c, fname, strlen(fname));
     return 0;
 }
@@ -582,7 +617,7 @@ static int sftp_reqst_part_handle(Channel *c, uint8_t type, const char *data, in
 }
 #endif
 
-static int sftp_cache_destroy(sftp_cache_st *cache)
+static int sftp_cache_destroy(proxy_sftp_st *cache)
 {
     cache->enable = 0;
     if (cache->buf) {
@@ -596,7 +631,7 @@ static int sftp_cache_destroy(sftp_cache_st *cache)
     return 0;
 }
 
-static int sftp_cache_init(sftp_cache_st *cache, const char *data, int dlen, int left, int id, sftp_cmd_cb cmd_cb)
+static int sftp_cache_init(proxy_sftp_st *cache, const char *data, int dlen, int left, int id, sftp_cmd_cb cmd_cb)
 {
     if (dlen <= left) {
         cache->enable = 0;
@@ -630,7 +665,7 @@ static const char *sftp_cache_merge(Channel *c, const char *buf, int *plen)
 {
     int nlen = 0;
     int len = *plen;
-    sftp_cache_st *cache = &(c->sftp_cache);
+    proxy_sftp_st *cache = (proxy_sftp_st *)c->proxy_data;
     sftp_cmd_cb cmd_cb = (sftp_cmd_cb)cache->cmd_cb;
     if (cache->enable == 0) {
         return buf;
@@ -673,6 +708,7 @@ int sftp_reqst_handle(Channel *c, const u_char *buf, int len)
     int left = 0;
     sftp_cmd_cb cmd_cb = NULL;
     sftp_head_st sftph = {0};
+    proxy_sftp_st *sftp_pd = (proxy_sftp_st *)c->proxy_data;
 
     data = sftp_cache_merge(c, data, &tlen);
     if (data == NULL) {
@@ -692,7 +728,7 @@ int sftp_reqst_handle(Channel *c, const u_char *buf, int len)
         }
 
         /* cache */
-        if (sftp_cache_init(&(c->sftp_cache), data, sftph.dlen, left, sftph.id, cmd_cb)) {
+        if (sftp_cache_init(sftp_pd, data, sftph.dlen, left, sftph.id, cmd_cb)) {
             return 1;
         }
 

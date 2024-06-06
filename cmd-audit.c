@@ -13,10 +13,18 @@ void proxy_channel_handler_set(Channel *c)
 {
     switch (c->proxy_type) {
     case PT_SSH:
+    case PT_RLOGIN:
+    case PT_TELNET:
         c->proxy_data = proxy_ssh_pd_create();
         c->proxy_dfunc = proxy_ssh_pd_destroy;
         break;
-
+    case PT_SFTP:
+        c->proxy_data = proxy_sftp_pd_create();
+        c->proxy_dfunc = proxy_sftp_pd_destroy;
+        break;
+    case PT_SCP:
+        c->proxy_data = proxy_scp_pd_create();
+        c->proxy_dfunc = proxy_scp_pd_destroy;
     default:
         break;
     }
@@ -32,6 +40,8 @@ int cmd_audit_wfd_handle(struct ssh *ssh, Channel *c, const u_char *buf, int len
         ret = cmd_sftp_wfd_handle(ssh, c, buf, len);
         break;
     case PT_SSH:
+    case PT_RLOGIN:
+    case PT_TELNET:
         ret = cmd_ssh_wfd_handle(ssh, c, buf, len);
         break;
     case PT_SCP:
@@ -51,6 +61,8 @@ int cmd_audit_rfd_handle(struct ssh *ssh, Channel *c, const u_char *buf, int len
         cmd_sftp_rfd_handle(ssh, c, buf, len);
         break;
     case PT_SSH:
+    case PT_RLOGIN:
+    case PT_TELNET:
         cmd_ssh_rfd_handle(ssh, c, buf, len);
         break;
     case PT_SCP:

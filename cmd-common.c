@@ -340,7 +340,7 @@ int login_handle(Channel *c, const char *buf, int len)
     proxy_info_st *pinfo = c->proxy_info;
     if (strncasecmp(s_pwd, "password", sizeof("password") - 1) == 0) {
         write(c->wfd, pinfo->password, strlen(pinfo->password));
-        write(c->wfd, "\n", 1);
+        write(c->wfd, "\r", 1);
         c->proxy_state = PROXY_STATE_LOGIN_PROMPT;
         return 0;
     }
@@ -630,7 +630,13 @@ int proxy_popen(const char *command)
 int proxy_auth_password(proxy_info_st *pinfo, char *sid)
 {
     int ret = 0;
-    void *redis_conn = Redis_InitCon(pinfo->hostname, pinfo->password, 6379);
+    mr_info_st mri = {{0}};
+    if (mysql_redis_info_get(&mri)) {
+        fatal("get mysql redis conf failed !!!");
+        return -1;
+    }
+
+    void *redis_conn = redis_connect(&mri);
     if (redis_conn == NULL) {
         fatal("redis connect failed !!!");
         return -1;
@@ -641,6 +647,10 @@ int proxy_auth_password(proxy_info_st *pinfo, char *sid)
     if (ret != 0) {
         error_p("get proxy info failed, exit");
         return -1;
+    }
+
+    if (pinfo->pt == PT_RLOGIN || pinfo->pt == PT_TELNET) {
+        return 0;
     }
 
     /* 自定义的-h选项，用来判断服务登陆是否成功，
