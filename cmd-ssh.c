@@ -15,6 +15,59 @@
 
 #define WHITESPACE " \t\r\n"
 
+typedef struct proxy_ssh_st
+{
+    /* 虚拟终端信息 */
+    struct vc_data *vc;
+    struct sshbuf *prompt;  /* 记录远程服务器的prompt */
+    struct sshbuf *cmd;
+    struct sshbuf *rspd;
+
+    cmdctrl_st *pcmdctrl;   /* 用来加载命令控制结构 */
+} proxy_ssh_st;
+
+proxy_ssh_st *proxy_ssh_pd_create()
+{
+    proxy_ssh_st *ssh_pd = xmalloc(sizeof(proxy_ssh_st));
+    ssh_pd->vc = vc_data_creat();
+    if (vc_do_resize(ssh_pd->vc, 120, 100))
+        fatal_f("resize vc falied");
+    vc_data_init(ssh_pd->vc);
+
+    ssh_pd->prompt = sshbuf_new();
+    ssh_pd->cmd = sshbuf_new();
+    ssh_pd->rspd = sshbuf_new();
+    ssh_pd->pcmdctrl = cmdctrl_create();
+
+#ifdef PROXY_DEBUG
+    // TODO： parser cmd match rule
+    cmd_string_parser1(ssh_pd->pcmdctrl, CCTYPE_BLACK, "\\bls\\b", strlen("\\bls\\b"));
+#endif
+
+    return ssh_pd;
+}
+
+void proxy_ssh_pd_destroy(void *private_data)
+{
+    proxy_ssh_st *ssh_pd = (proxy_ssh_st *)private_data;
+    vc_data_destroy(ssh_pd->vc);
+    ssh_pd->vc = NULL;
+
+    sshbuf_free(ssh_pd->prompt);
+    sshbuf_free(ssh_pd->cmd);
+    sshbuf_free(ssh_pd->rspd);
+    cmdctrl_destroy(ssh_pd->pcmdctrl);
+
+    return ;
+}
+
+int proxy_ssh_vc_resize(Channel *c, unsigned int cols, unsigned int lines)
+{
+    proxy_ssh_st *ssh_pd = (proxy_ssh_st *)c->proxy_data;
+    return vc_do_resize(ssh_pd->vc, cols, lines);
+}
+
+
 static void reset_vc_status(struct vc_data *vc)
 {
     reset_terminal(vc);
@@ -22,63 +75,57 @@ static void reset_vc_status(struct vc_data *vc)
 }
 
 /* 一个新命令开始审计，清理请求和响应缓存 */
-static void reset_cmd_status(Channel *c)
+static void reset_cmd_status(proxy_ssh_st *ssh_pd)
 {
-    sshbuf_reset(c->cmd);
-    sshbuf_reset(c->rspd);
-    reset_vc_status(c->vc);
+    sshbuf_reset(ssh_pd->cmd);
+    sshbuf_reset(ssh_pd->rspd);
+    reset_vc_status(ssh_pd->vc);
 }
 
-static void proxy_cmd_end(Channel *c)
+static void proxy_cmd_end(proxy_ssh_st *ssh_pd)
 {
-    vc_data_to_sshbuf(c->vc, c->cmd);
-    print_uni_line(c->vc);
-    debug_p("cmd[%d]>>%s", sshbuf_len(c->cmd), sshbuf_ptr(c->cmd));
-    reset_vc_status(c->vc);
+    vc_data_to_sshbuf(ssh_pd->vc, ssh_pd->cmd);
+    print_uni_line(ssh_pd->vc);
+    debug_p("cmd[%d]>>%s", sshbuf_len(ssh_pd->cmd), sshbuf_ptr(ssh_pd->cmd));
+    reset_vc_status(ssh_pd->vc);
 }
 
-static void proxy_rspd_end(Channel *c)
+static void proxy_rspd_end(proxy_ssh_st *ssh_pd)
 {
-    vc_data_to_sshbuf(c->vc, c->rspd);
-    print_uni_line(c->vc);
-    debug_p("rspd[%lu]>>%s", sshbuf_len(c->rspd), sshbuf_ptr(c->rspd));
-    reset_vc_status(c->vc);
+    vc_data_to_sshbuf(ssh_pd->vc, ssh_pd->rspd);
+    print_uni_line(ssh_pd->vc);
+    debug_p("rspd[%lu]>>%s", sshbuf_len(ssh_pd->rspd), sshbuf_ptr(ssh_pd->rspd));
+    reset_vc_status(ssh_pd->vc);
 }
 
-static int set_prompt(Channel *c, struct vc_data *vc)
+static int login_prompt_handle(proxy_ssh_st *ssh_pd, const char *buf, int len)
 {
-    sshbuf_reset(c->prompt);
-    uints_to_sshbuf(vc->vc_uni_lines[vc->state.y], vc->state.x, c->prompt);
-    debug_p("prompt [%u]>>%s", sshbuf_len(c->prompt), sshbuf_ptr(c->prompt));
-    return 0;
-}
-
-static int login_prompt_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
-{
-    struct vc_data *vc = c->vc;
+    struct vc_data *vc = ssh_pd->vc;
     do_rspd_con_write(vc, buf, len);
-    set_prompt(c, vc);
+    sshbuf_reset(ssh_pd->prompt);
+    uints_to_sshbuf(vc->vc_uni_lines[vc->state.y], vc->state.x, ssh_pd->prompt);
+    debug_p("prompt [%u]>>%s", sshbuf_len(ssh_pd->prompt), sshbuf_ptr(ssh_pd->prompt));
     return 0;
 }
 
-static int wfd_cmd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
+static int wfd_cmd_handle(proxy_ssh_st *ssh_pd, const char *buf, int len)
 {
-    return do_rqst_con_write(c->vc, buf, len);
+    return do_rqst_con_write(ssh_pd->vc, buf, len);
 }
 
-static int rfd_cmd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
+static int rfd_cmd_handle(proxy_ssh_st *ssh_pd, const char *buf, int len)
 {
-    return do_rspd_con_write(c->vc, buf, len);
+    return do_rspd_con_write(ssh_pd->vc, buf, len);
 }
 
-static int rfd_rspd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
+static int rfd_rspd_handle(proxy_ssh_st *ssh_pd, const char *buf, int len)
 {
-    return do_rspd_con_write(c->vc, buf, len);
+    return do_rspd_con_write(ssh_pd->vc, buf, len);
 }
 
 #define SSH_PROXY_DIRECT    0
 
-static int need_input(Channel *c)
+static int need_input(proxy_ssh_st *ssh_pd)
 {
     //TODO: 将输入标记通过配置文件加载到 Channel 中，然后循环匹配
     const char *arr[] = {
@@ -88,7 +135,7 @@ static int need_input(Channel *c)
     };
 
     int i = 0;
-    const u_char *ptr = sshbuf_ptr(c->rspd);
+    const u_char *ptr = sshbuf_ptr(ssh_pd->rspd);
     for (; i < sizeof(arr)/sizeof(arr[0]); ++i) {
         if (strncasecmp_r((const char *)ptr, arr[i], strlen(arr[i])) == 0) {
             return 1;
@@ -158,7 +205,8 @@ static int is_non_audit_response(struct sshbuf *cmd)
 
 static int cmd_match(Channel *c, struct sshbuf *cmd)
 {
-    cmd_st *pcmd_ret = cmdctrl_match(c->pcmdctrl, sshbuf_ptr(cmd));
+    proxy_ssh_st *ssh_pd = (proxy_ssh_st *)(c->proxy_data);
+    cmd_st *pcmd_ret = cmdctrl_match(ssh_pd->pcmdctrl, sshbuf_ptr(cmd));
 
     if (pcmd_ret == NULL || !CCTYPE_ISSET(pcmd_ret, CCTYPE_BLACK)) {
         return 0;
@@ -184,6 +232,8 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
     return 0;
 #endif
     struct sshbuf *newline = NULL;
+    proxy_ssh_st *ssh_pd = (proxy_ssh_st *)(c->proxy_data);
+
     debug_p("cmd start state=%d", c->proxy_state);
     switch (c->proxy_state) {
     case PROXY_STATE_LOGIN_PROMPT:
@@ -192,7 +242,7 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         // fallthrough
     proxy_state_cmd_start:
     case PROXY_STATE_CMD_START:
-        reset_cmd_status(c);
+        reset_cmd_status(ssh_pd);
 
         /* 只按了一个回车键，则记录prompt */
         if (len == 1 && buf[0] == 0x0d) {
@@ -203,7 +253,7 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         /* 只有一个字符 代表是用户手动输入的字符，会回显请求数据，可以在回显中审计
            || 第一个字节为控制字符 的多字节字符串 代表 粘贴的命令不会直接发送给服务端，会回显请求数据，可以在回显中审计
            || 粘贴的命令中没有 提交字符('\r')  */
-        if (len == 1 || vc_is_control(c->vc, 1, buf[0]) || strchr(buf, '\r') == NULL) {
+        if (len == 1 || vc_is_control(ssh_pd->vc, 1, buf[0]) || strchr(buf, '\r') == NULL) {
             c->proxy_state = PROXY_STATE_CMD_ECHO_START;
             break;
         }
@@ -212,14 +262,14 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         c->proxy_state = PROXY_STATE_CMD;
         // fallthrough
     case PROXY_STATE_CMD:
-        wfd_cmd_handle(ssh, c, buf, len);
+        wfd_cmd_handle(ssh_pd, buf, len);
         // 命令匹配
         if (newline == NULL) {
             newline = sshbuf_new();
         } else {
             sshbuf_reset(newline);
         }
-        vc_data_to_sshbuf(c->vc, newline);
+        vc_data_to_sshbuf(ssh_pd->vc, newline);
         if (cmd_match(c, newline)) {
             c->proxy_state = PROXY_STATE_LOGIN_PROMPT;
             return -1;
@@ -228,12 +278,12 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         break;
     case PROXY_STATE_CMD_ECHO:
         if (len == 1 && buf[0] == 0x0d) {
-            proxy_cmd_end(c);
-            if (cmd_match(c, c->cmd)) {
+            proxy_cmd_end(ssh_pd);
+            if (cmd_match(c, ssh_pd->cmd)) {
                 c->proxy_state = PROXY_STATE_LOGIN_PROMPT;
                 return -1;
             }
-            if (is_non_audit_response(c->cmd)) {
+            if (is_non_audit_response(ssh_pd->cmd)) {
                 c->proxy_state = PROXY_STATE_RSPD_NOA;
             } else {
                 c->proxy_state = PROXY_STATE_RSPD;
@@ -241,9 +291,9 @@ int cmd_ssh_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         }
         break;
     case PROXY_STATE_RSPD:
-        proxy_rspd_end(c);
+        proxy_rspd_end(ssh_pd);
         /* 根据响应最后的单词标记 来判断 是否为交互式的命令输入，还是普通的命令输入 */
-        if (!need_input(c)) {
+        if (!need_input(ssh_pd)) {
             c->proxy_state = PROXY_STATE_CMD_START;
             goto proxy_state_cmd_start;
         }
@@ -275,33 +325,35 @@ int cmd_ssh_rfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
     return 0;
 #endif
     struct sshbuf *newline = NULL;
+    proxy_ssh_st *ssh_pd = (proxy_ssh_st *)(c->proxy_data);
+
     debug_p("rspd start state=%d", c->proxy_state);
     switch (c->proxy_state) {
     case PROXY_STATE_LOGIN:
-        login_handle(ssh, c, buf, len);
+        login_handle(c, buf, len);
         break;
     case PROXY_STATE_LOGIN_PROMPT:
-        login_prompt_handle(ssh, c, buf, len);
+        login_prompt_handle(ssh_pd, buf, len);
         break;
     case PROXY_STATE_CMD_ECHO_START:
         /* 客户端发送了 ctrl + [a ... z] 的特殊请求，很多请求是无效的，服务端会发来07，不需要记录 */
-        if (len == 1 && vc_is_control(c->vc, 1, buf[0])) {
+        if (len == 1 && vc_is_control(ssh_pd->vc, 1, buf[0])) {
             c->proxy_state = PROXY_STATE_CMD_START;
             break;
         }
         c->proxy_state = PROXY_STATE_CMD_ECHO;
         // fallthrough
     case PROXY_STATE_CMD_ECHO:
-        rfd_cmd_handle(ssh, c, buf, len);
+        rfd_cmd_handle(ssh_pd, buf, len);
         break;
     case PROXY_STATE_CMD:
         /* 记录 */
-        if (!vc_is_cr(c->vc)) {
+        if (!vc_is_cr(ssh_pd->vc)) {
             break;
         }
 
-        proxy_cmd_end(c);
-        if (is_non_audit_response(c->cmd)) {
+        proxy_cmd_end(ssh_pd);
+        if (is_non_audit_response(ssh_pd->cmd)) {
             c->proxy_state = PROXY_STATE_RSPD_NOA;
             break;
         } else {
@@ -310,17 +362,17 @@ int cmd_ssh_rfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         // fallthrough
     case PROXY_STATE_RSPD:
     case PROXY_STATE_RSPD_INPUT:    /* 交互式命令输入的回显数据正常审计 */
-        rfd_rspd_handle(ssh, c, buf, len);
+        rfd_rspd_handle(ssh_pd, buf, len);
         break;
     case PROXY_STATE_RSPD_NOA:
-        rfd_rspd_handle(ssh, c, buf, len);
+        rfd_rspd_handle(ssh_pd, buf, len);
         if (newline == NULL) {
             newline = sshbuf_new();
         }
-        vc_data_to_sshbuf(c->vc, newline);
+        vc_data_to_sshbuf(ssh_pd->vc, newline);
         //debug_p("newline[%d]>>%s", sshbuf_len(newline), sshbuf_ptr(newline));
-        reset_vc_status(c->vc);
-        if (strncasecmp(sshbuf_ptr(c->prompt), sshbuf_ptr(newline), sshbuf_len(c->prompt)) == 0) {
+        reset_vc_status(ssh_pd->vc);
+        if (strncasecmp(sshbuf_ptr(ssh_pd->prompt), sshbuf_ptr(newline), sshbuf_len(ssh_pd->prompt)) == 0) {
             c->proxy_state = PROXY_STATE_CMD_START;
         }
         sshbuf_reset(newline);

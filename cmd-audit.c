@@ -9,11 +9,25 @@
 #include "cmd-ssh.h"
 #include "cmd-scp.h"
 
+void proxy_channel_handler_set(Channel *c)
+{
+    switch (c->proxy_type) {
+    case PT_SSH:
+        c->proxy_data = proxy_ssh_pd_create();
+        c->proxy_dfunc = proxy_ssh_pd_destroy;
+        break;
+
+    default:
+        break;
+    }
+
+    return ;
+}
+
 int cmd_audit_wfd_handle(struct ssh *ssh, Channel *c, const u_char *buf, int len)
 {
     int ret = 0;
-    proxy_info_st *pinfo = &(c->proxy_info);
-    switch (pinfo->pt) {
+    switch (c->proxy_type) {
     case PT_SFTP:
         ret = cmd_sftp_wfd_handle(ssh, c, buf, len);
         break;
@@ -32,8 +46,7 @@ int cmd_audit_wfd_handle(struct ssh *ssh, Channel *c, const u_char *buf, int len
 
 int cmd_audit_rfd_handle(struct ssh *ssh, Channel *c, const u_char *buf, int len)
 {
-    proxy_info_st *pinfo = &(c->proxy_info);
-    switch (pinfo->pt) {
+    switch (c->proxy_type) {
     case PT_SFTP:
         cmd_sftp_rfd_handle(ssh, c, buf, len);
         break;

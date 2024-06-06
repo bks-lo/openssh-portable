@@ -209,11 +209,11 @@ static const char *find_last_word(const char *buf, int len, int min_len)
     return NULL;
 }
 
-int login_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
+int login_handle(Channel *c, const char *buf, int len)
 {
 #if 0
     static int need_password = 0;
-    proxy_info_st *pinfo = &(c->proxy_info);
+    proxy_info_st *pinfo = c->proxy_info;
 
     /* rlogin telnet 只能在交互时传输密码 */
     if (need_password == 0 && (pinfo->pt == PT_RLOGIN || pinfo->pt == PT_TELNET)) {
@@ -259,7 +259,7 @@ int login_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
     char **lrok_arr = NULL;
     char **lrfail_arr = NULL;
 
-    proxy_info_st *pinfo = &(c->proxy_info);
+    proxy_info_st *pinfo = c->proxy_info;
     ret = get_login_rstr_by_proto(pinfo->protocol_type, 1, &lrfail_arr, &lrfail_num);
     if (ret) {
         debug_p("get_login_rstr_by_proto failed");
@@ -337,7 +337,7 @@ int login_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         return -1;
     }
 
-    proxy_info_st *pinfo = &(c->proxy_info);
+    proxy_info_st *pinfo = c->proxy_info;
     if (strncasecmp(s_pwd, "password", sizeof("password") - 1) == 0) {
         write(c->wfd, pinfo->password, strlen(pinfo->password));
         write(c->wfd, "\n", 1);
@@ -449,14 +449,14 @@ int convert_encode_2_utf8(code_type_em from_type, char *inbuf, size_t inlen, cha
 
 inline int need_convert(Channel *c)
 {
-    return c->proxy_info.encode != UTF_8;
+    return c->proxy_info->encode != UTF_8;
 }
 
 #define CONVERT_STEP    2
 
 char *convert_encode(Channel *c, char *inbuf, size_t inlen, size_t *outlen)
 {
-    proxy_info_st *pinfo = &(c->proxy_info);
+    proxy_info_st *pinfo = c->proxy_info;
 
     if (!need_convert(c)) {
         *outlen = inlen;
@@ -503,20 +503,20 @@ static int protocol_to_pt(proxy_info_st *pinfo)
 }
 
 //通过db_sid获取信息，填充会话结构
-int get_proxy_info_by_sid(proxy_info_st *pinfo, char *sid)
+int get_proxy_info_by_sid(void *rdis_conn, proxy_info_st *pinfo, char *sid)
 {
     char cmd[256] = {'\0'};
     char *value = NULL;
     cJSON *root = NULL;
     cJSON *node = NULL;
 
-    if ((pinfo == NULL) || (sid == NULL) || (pinfo->redis_conn == NULL) || (strlen(sid) == 0)) {
-        error_p("pinfo, redis_conn, sid is NULL or empty");
+    if ((pinfo == NULL) || (sid == NULL) || (strlen(sid) == 0)) {
+        error_p("pinfo or sid is NULL or empty");
         return -1;
     }
 
     snprintf(cmd, 256, "connection_session::%s", sid);
-    if (Redis_Query(pinfo->redis_conn, cmd, 0, &value) < 0) {
+    if (Redis_Query(rdis_conn, cmd, 0, &value) < 0) {
         error_p("excute cmd[%s] failed", cmd);
         if (value != NULL) {
             free(value);
@@ -629,7 +629,16 @@ int proxy_popen(const char *command)
  */
 int proxy_auth_password(proxy_info_st *pinfo, char *sid)
 {
-    if (get_proxy_info_by_sid(pinfo, sid) != 0) {
+    int ret = 0;
+    void *redis_conn = Redis_InitCon(pinfo->hostname, pinfo->password, 6379);
+    if (redis_conn == NULL) {
+        fatal("redis connect failed !!!");
+        return -1;
+    }
+
+    ret = get_proxy_info_by_sid(redis_conn, pinfo, sid);
+    redisFree(redis_conn);
+    if (ret != 0) {
         error_p("get proxy info failed, exit");
         return -1;
     }
@@ -646,17 +655,41 @@ int proxy_auth_password(proxy_info_st *pinfo, char *sid)
     return proxy_popen(cmd);
 }
 
-proxy_info_st *proxy_info_init()
+int proxy_conn_fd_init(proxy_conn_fd_st *conn_fd)
 {
     mr_info_st mri = {{0}};
     if (mysql_redis_info_get(&mri)) {
         error_p("get mysql redis conf failed !!!");
-        return NULL;
+        return -1;
     }
 
+    conn_fd->redis_conn = redis_connect(&mri);
+    if (conn_fd->redis_conn == NULL) {
+        fatal("redis connect failed !!!");
+        return -1;
+    }
+
+    conn_fd->mysql_conn = mysql_connect(&mri);
+    if (conn_fd->mysql_conn == NULL) {
+        redisFree((redisContext *)conn_fd->redis_conn);
+        fatal("mysql connect failed !!!");
+        return -1;
+    }
+
+    return 0;
+}
+
+void proxy_conn_fd_destroy(proxy_conn_fd_st *conn_fd)
+{
+    redisFree((redisContext *)conn_fd->redis_conn);
+    mysql_close(conn_fd->mysql_conn);
+    return ;
+}
+
+
+proxy_info_st *proxy_info_init()
+{
     proxy_info_st *pinfo = (proxy_info_st *)xcalloc(1, sizeof(proxy_info_st));
-    pinfo->redis_conn = redis_connect(&mri);
-    pinfo->mysql_conn = mysql_connect(&mri);
     return pinfo;
 }
 

@@ -616,13 +616,6 @@ server_request_session(struct ssh *ssh)
 		return NULL;
 	}
 
-#ifdef PROXY_ENABLE
-	/*
-	 * 加载代理信息
-	 */
-    memcpy(&(c->proxy_info), ssh->pinfo, sizeof(proxy_info_st));
-#endif
-
 	channel_register_cleanup(ssh, c->self, session_close_by_channel, 0);
 	return c;
 }

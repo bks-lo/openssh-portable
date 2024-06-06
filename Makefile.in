@@ -69,7 +69,7 @@ MKDIR_P=@MKDIR_P@
 
 .SUFFIXES: .lo
 
-TARGETS=ssh$(EXEEXT) sshd$(EXEEXT) sshd_debug$(EXEEXT) sshd_proxy$(EXEEXT) sshd_proxy_debug$(EXEEXT) ssh-add$(EXEEXT) ssh-keygen$(EXEEXT) ssh-keyscan${EXEEXT} ssh-keysign${EXEEXT} ssh-pkcs11-helper$(EXEEXT) ssh-agent$(EXEEXT) scp$(EXEEXT) sftp-server$(EXEEXT) sftp$(EXEEXT) ssh-sk-helper$(EXEEXT)
+TARGETS=ssh$(EXEEXT) ssh_debug$(EXEEXT) sshd$(EXEEXT) sshd_debug$(EXEEXT) sshd_proxy$(EXEEXT) sshd_proxy_debug$(EXEEXT) ssh-add$(EXEEXT) ssh-keygen$(EXEEXT) ssh-keyscan${EXEEXT} ssh-keysign${EXEEXT} ssh-pkcs11-helper$(EXEEXT) ssh-agent$(EXEEXT) scp$(EXEEXT) sftp-server$(EXEEXT) sftp$(EXEEXT) ssh-sk-helper$(EXEEXT)
 
 XMSS_OBJS=\
 	ssh-xmss.o \
@@ -193,7 +193,7 @@ SSHD_SUB_C_FILE=auth-rhosts.c auth-passwd.c \
 	sandbox-seccomp-filter.c sandbox-capsicum.c sandbox-pledge.c \
 	sandbox-solaris.c uidswap.c $(SK_C_FILE)
 
-SSHD_PROXY_C_FILE=cmd-vc.c cmd-audit.c cmd-common.c cmd-ssh.c cmd-sftp.c cmd-scp.c cmd-match.c
+SSHD_PROXY_C_FILE= cmd-vc.c cmd-audit.c cmd-common.c cmd-ssh.c cmd-sftp.c cmd-scp.c cmd-match.c
 
 SSHD_C_FILE=sshd.c $(SSHD_SUB_C_FILE)
 
@@ -272,6 +272,9 @@ ssh$(EXEEXT): $(LIBCOMPAT) libssh.a $(SSHOBJS)
 
 #ssh$(EXEEXT): $(LIBCOMPAT) $(LIBSSH_C_FILE)	 $(SSH_C_FILE) ssh_api.c
 #	$(LD) -o $@ $(CFLAGS) $(CPPFLAGS) ssh_api.c $(SSH_C_FILE) $(LIBSSH_C_FILE)  $(LDFLAGS) -lopenbsd-compat $(LIBS) $(GSSLIBS) $(CHANNELLIBS)
+
+ssh_debug$(EXEEXT): $(LIBSSH_C_FILE)	$(LIBCOMPAT) $(SSH_C_FILE)  Makefile.in config.h ssh_api.c
+	$(CC) -o $@ $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -DPROXY_DEBUG ssh_api.c $(LIBSSH_C_FILE) $(SSH_C_FILE) -lopenbsd-compat $(LIBS) $(GSSLIBS) $(CHANNELLIBS)
 
 
 sshd_proxy_debug$(EXEEXT): $(LIBSSH_C_FILE)	$(LIBCOMPAT) $(SSHD_C_FILE) $(SSHD_PROXY_C_FILE) Makefile.in config.h
@@ -487,6 +490,7 @@ install-files:
 	$(MKDIR_P) $(DESTDIR)$(libexecdir)
 	$(MKDIR_P) -m 0755 $(DESTDIR)$(PRIVSEP_PATH)
 	$(INSTALL) -m 0755 $(STRIP_OPT) ssh$(EXEEXT) $(DESTDIR)$(bindir)/ssh$(EXEEXT)
+	$(INSTALL) -m 0755 $(STRIP_OPT) ssh_debug$(EXEEXT) $(DESTDIR)$(bindir)/ssh_debug$(EXEEXT)
 	$(INSTALL) -m 0755 $(STRIP_OPT) scp$(EXEEXT) $(DESTDIR)$(bindir)/scp$(EXEEXT)
 	$(INSTALL) -m 0755 $(STRIP_OPT) ssh-add$(EXEEXT) $(DESTDIR)$(bindir)/ssh-add$(EXEEXT)
 	$(INSTALL) -m 0755 $(STRIP_OPT) ssh-agent$(EXEEXT) $(DESTDIR)$(bindir)/ssh-agent$(EXEEXT)
@@ -576,6 +580,7 @@ uninstallall:	uninstall
 
 uninstall:	uninstall-lr
 	-rm -f $(DESTDIR)$(bindir)/ssh$(EXEEXT)
+	-rm -f $(DESTDIR)$(bindir)/ssh_debug$(EXEEXT)
 	-rm -f $(DESTDIR)$(bindir)/scp$(EXEEXT)
 	-rm -f $(DESTDIR)$(bindir)/ssh-add$(EXEEXT)
 	-rm -f $(DESTDIR)$(bindir)/ssh-agent$(EXEEXT)

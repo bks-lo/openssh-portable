@@ -88,6 +88,7 @@
 #include "match.h"
 #ifdef PROXY_ENABLE
 #include "cmd-audit.h"
+#include "cmd-common.h"
 #endif
 
 /* XXX remove once we're satisfied there's no lurking bugs */
@@ -504,21 +505,13 @@ channel_new(struct ssh *ssh, char *ctype, int type, int rfd, int wfd, int efd,
 	c->inactive_deadline = lookup_timeout(ssh, c->ctype);
 	TAILQ_INIT(&c->status_confirms);
 #ifdef PROXY_ENABLE
+    c->proxy_type = ssh->pinfo->pt;
 	c->is_child = 0;
 	c->proxy_state = PROXY_STATE_NONE;
-    c->vc = vc_data_creat();
-    if (vc_do_resize(c->vc, 120, 100))
-        fatal_f("resize vc falied");
-    vc_data_init(c->vc);
+    proxy_channel_handler_set(c);
+    proxy_conn_fd_init(&c->proxy_cfd);
 
-    c->prompt = sshbuf_new();
-    c->cmd = sshbuf_new();
-    c->rspd = sshbuf_new();
-    c->pcmdctrl = cmdctrl_create();
-#ifdef PROXY_DEBUG
-    // TODO： parser cmd match rule
-    cmd_string_parser1(c->pcmdctrl, CCTYPE_BLACK, "\\bls\\b", strlen("\\bls\\b"));
-#endif
+    c->proxy_info = ssh->pinfo;
 #endif
 	debug("channel %d: new %s [%s] (inactive timeout: %u)",
 	    found, c->ctype, remote_name, c->inactive_deadline);
@@ -770,13 +763,12 @@ channel_free(struct ssh *ssh, Channel *c)
 	free(c->xctype);
 	c->xctype = NULL;
 #ifdef PROXY_ENABLE
-    vc_data_destroy(c->vc);
-    c->vc = NULL;
+    if (c->proxy_dfunc != NULL && c->proxy_data != NULL) {
+        c->proxy_dfunc(c->proxy_data);
+    }
 
-    sshbuf_free(c->prompt);
-    sshbuf_free(c->cmd);
-    sshbuf_free(c->rspd);
-    cmdctrl_destroy(c->pcmdctrl);
+    proxy_conn_fd_destroy(&c->proxy_cfd);
+    c->proxy_info = NULL; /* 内存由struct ssh 结构体管理，这里不用释放 */
 #endif
 	while ((cc = TAILQ_FIRST(&c->status_confirms)) != NULL) {
 		if (cc->abandon_cb != NULL)
@@ -2289,7 +2281,7 @@ channel_handle_wfd(struct ssh *ssh, Channel *c)
  out:
 	c->local_consumed += olen - sshbuf_len(c->output);
 #ifdef PROXY_ENABLE
-    logit_p("olen=%u, sshbuf_len(c->output)=%u, local_consumed=%u", olen, sshbuf_len(c->output), c->local_consumed);
+    logit_p("olen=%zu, sshbuf_len(c->output)=%zu, local_consumed=%u", olen, sshbuf_len(c->output), c->local_consumed);
 #endif
 
 	return 1;

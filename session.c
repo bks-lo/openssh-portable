@@ -97,6 +97,7 @@
 
 #ifdef PROXY_ENABLE
 #include "cmd-vc.h"
+#include "cmd-ssh.h"
 #endif
 
 #if defined(KRB5) && defined(USE_AFS)
@@ -569,6 +570,13 @@ do_exec_pty(struct ssh *ssh, Session *s, const char *command)
 	int fdout, ptyfd, ttyfd, ptymaster;
 	pid_t pid;
 
+#ifdef PROXY_CHILD_DEBUG
+    int pipe_fds[2];
+    if (pipe(pipe_fds) == -1) {
+        fatal("Pipe creation failed");
+        return 1;
+    }
+#endif
 	if (s == NULL)
 		fatal("do_exec_pty: no session");
 	ptyfd = s->ptyfd;
@@ -628,9 +636,16 @@ do_exec_pty(struct ssh *ssh, Session *s, const char *command)
 			error("dup2 stdin: %s", strerror(errno));
 		if (dup2(ttyfd, 1) == -1)
 			error("dup2 stdout: %s", strerror(errno));
+#ifdef PROXY_CHILD_DEBUG
+		if (dup2(pipe_fds[1], 2) == -1)
+		    error("dup2 pipe_fds[1]: %s", strerror(errno));
+
+        close(pipe_fds[0]);
+        close(pipe_fds[1]);
+#else
 		if (dup2(ttyfd, 2) == -1)
 			error("dup2 stderr: %s", strerror(errno));
-
+#endif
 		/* Close the extra descriptor for the pseudo tty. */
 		close(ttyfd);
 
@@ -661,7 +676,13 @@ do_exec_pty(struct ssh *ssh, Session *s, const char *command)
 	s->ptymaster = ptymaster;
 	ssh_packet_set_interactive(ssh, 1,
 	    options.ip_qos_interactive, options.ip_qos_bulk);
+
+#ifdef PROXY_CHILD_DEBUG
+    close(pipe_fds[1]);
+	session_set_fds(ssh, s, ptyfd, fdout, pipe_fds[0], 1, 1);
+#else
 	session_set_fds(ssh, s, ptyfd, fdout, -1, 1, 1);
+#endif
 	return 0;
 }
 
@@ -1727,7 +1748,7 @@ do_child(struct ssh *ssh, Session *s, const char *command)
 		argv[1] = "-c";
 
 		char tmp_cmd[1024] = {0};
-		proxy_cmd_get(tmp_cmd, sizeof(tmp_cmd), &(c->proxy_info), NULL);
+		proxy_cmd_get(tmp_cmd, sizeof(tmp_cmd), c->proxy_info, NULL);
 		argv[2] = tmp_cmd;
 		argv[3] = NULL;
 #endif
@@ -1747,7 +1768,7 @@ do_child(struct ssh *ssh, Session *s, const char *command)
 	argv[2] = (char *) command;
 #else
 	char tmp[1024] = {0};
-	proxy_cmd_get(tmp, sizeof(tmp), &(c->proxy_info), command);
+	proxy_cmd_get(tmp, sizeof(tmp), c->proxy_info, command);
 	argv[2] = tmp;
 #endif
 	argv[3] = NULL;
@@ -1937,7 +1958,9 @@ session_window_change_req(struct ssh *ssh, Session *s)
 	pty_change_window_size(s->ptyfd, s->row, s->col, s->xpixel, s->ypixel);
 #ifdef PROXY_ENABLE
     Channel *c = channel_lookup(ssh, s->chanid);
-    vc_do_resize(c->vc, s->col, s->row);
+    if (c->proxy_type == PT_SSH) {
+        proxy_ssh_vc_resize(c, s->col, s->row);
+    }
 #endif
 	return 1;
 }
@@ -1993,7 +2016,9 @@ session_pty_req(struct ssh *ssh, Session *s)
 	pty_change_window_size(s->ptyfd, s->row, s->col, s->xpixel, s->ypixel);
 #ifdef PROXY_ENABLE
     Channel *c = channel_lookup(ssh, s->chanid);
-    vc_do_resize(c->vc, s->col, s->row);
+    if (c->proxy_type == PT_SSH) {
+        proxy_ssh_vc_resize(c, s->col, s->row);
+    }
 #endif
 
 	session_proctitle(s);

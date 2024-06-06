@@ -103,9 +103,6 @@ typedef struct proxy_info_st
     char sid[128];                  //
     char uid[128];                  //
 
-    void *redis_conn;               // redis连接句柄，取配置用
-    void *mysql_conn;               // MySQL连接句柄，发送日志用
-
     char protocol_type[32];         //真实协议名称
     protolcol_type_t pt;            //真实协议类型
 
@@ -121,17 +118,10 @@ typedef struct proxy_info_st
     char client_ip[256];            //客户端ip
 } proxy_info_st;
 
-
-typedef struct sftp_cache_st
-{
-    uint8_t enable;         // 是否启用这个cache结构
-    char *buf;              // 缓存空间，已经为下一个分包，开辟好了空间，下个分包到达后直接填充
-    void *cmd_cb;           // 缓存数据包的处理函数，为空 代表 不关心接下来的缓存内容，所以不用缓存数据，只用记录偏移就可以。
-    int tlen;               // buf的空间大小
-    int offset;             // 当前已缓存的偏移
-    int needlen;            // 需要下一个分包的长度 = tlen - offset
-    int id;                 // 第一包解析出的 id
-} sftp_cache_st;
+typedef struct proxy_conn_fd_st {
+    void *redis_conn;               // redis连接句柄，取配置用
+    void *mysql_conn;               // MySQL连接句柄，发送日志用
+} proxy_conn_fd_st;
 
 int proxy_cmd_get(char *cmd, int clen, proxy_info_st *pinfo, const char *command);
 

@@ -40,8 +40,7 @@
 
 #ifdef PROXY_ENABLE
 #include "cmd-define.h"
-#include "cmd-vc.h"
-#include "cmd-match.h"
+typedef void (*proxy_data_destroy_cb)(void *private_data);
 #endif
 
 /* Definitions for channel types. */
@@ -221,20 +220,15 @@ struct Channel {
 #ifdef PROXY_ENABLE
 	int is_child;
 
-	/* 代理状态，未登录，登录成功，失败等 */
-	int proxy_state;
+    int proxy_state;                    /* 代理状态，未登录，登录成功，失败等 */
+    protolcol_type_t proxy_type;        /* 代理的协议类型 */
+    proxy_conn_fd_st proxy_cfd;         /* 协议代理使用数据库连接 */
 
-    /* 虚拟终端信息 */
-    struct vc_data *vc;
-    struct sshbuf *prompt;  /* 记录远程服务器的prompt */
-    struct sshbuf *cmd;
-    struct sshbuf *rspd;
+    proxy_data_destroy_cb proxy_dfunc;  /* 协议私有数据释放的回调 */
+    void *proxy_data;                   /* 协议私有数据，根据协议类型不同填充不同的结构 */
 
-    cmdctrl_st *pcmdctrl;   /* 用来加载命令控制结构 */
-
-	sftp_cache_st sftp_cache;
 	/* 代理信息 */
-	proxy_info_st proxy_info;
+	proxy_info_st *proxy_info;
 
 #endif
 };

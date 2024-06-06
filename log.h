@@ -87,7 +87,6 @@ void	 sshlogdirect(LogLevel, int, const char *, ...)
     __attribute__((format(printf, 3, 4)));
 
 void prinf_orig(const char *fmt, ...);
-void pr_hexdump(const char* p, int len);
 void pr_rqst_hexdump(const char *p, int len);
 void pr_rspd_hexdump(const char *p, int len);
 
@@ -144,7 +143,6 @@ void pr_rspd_hexdump(const char *p, int len);
 
 #ifdef PROXY_DEBUG
     #define debug_orig(fmt, ...)	prinf_orig("(pid=%d)"fmt, getpid(), __VA_ARGS__)
-	#define hexdump                 pr_hexdump
 	#define rspd_hexdump            pr_rspd_hexdump
 	#define rqst_hexdump            pr_rqst_hexdump
     void pr_suffix_hexdump(const char *suffix, const char *p, int len);
@@ -155,8 +153,7 @@ void pr_rspd_hexdump(const char *p, int len);
     #define verbose_p(...)		sshlog(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_VERBOSE, "[proxy] ", __VA_ARGS__)
     #define logit_p(...)		sshlog(__FILE__, __func__, __LINE__, 1, SYSLOG_LEVEL_INFO, "[proxy] ", __VA_ARGS__)
 #else
-	#define debug_orig(fmt, ...)
-	#define hexdump
+	#define debug_orig(fmt, ...)    prinf_orig("(pid=%d)"fmt, getpid(), __VA_ARGS__)
 	#define rspd_hexdump
 	#define rqst_hexdump
 

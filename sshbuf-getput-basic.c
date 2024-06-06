@@ -682,7 +682,6 @@ sshbuf_delete(struct sshbuf *buf, size_t offset, size_t len)
 {
     u_char *p1 = NULL;
     u_char *p2 = NULL;
-	int r;
 
     /* 检测offset 和 len 是否合法 */
     size_t slen = sshbuf_len(buf);

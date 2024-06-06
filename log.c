@@ -512,7 +512,7 @@ void prinf_orig(const char *fmt, ...)
 	vsnprintf(msgbuf, sizeof(msgbuf), fmt, args);
 	va_end(args);
 
-	(void)write(STDOUT_FILENO, msgbuf, strlen(msgbuf));
+	(void)write(log_stderr_fd, msgbuf, strlen(msgbuf));
 }
 
 #define PKT_PRINT_UN    0
@@ -521,11 +521,8 @@ void prinf_orig(const char *fmt, ...)
 
 #define PKT_PRINT(fmt, ...)   prinf_orig(fmt, ##__VA_ARGS__)
 //hexdump
-void pr_hexdump(const char* p, int len)
+static void pr_hexdump(const char* p, int len)
 {
-	if (log_level < SYSLOG_LEVEL_DEBUG3)
-		return;
-
     const char* line;
     int i;
     int thisline;
@@ -533,7 +530,7 @@ void pr_hexdump(const char* p, int len)
 
     line = p;
     offset = 0;
-	PKT_PRINT("(len=%d)(pid=%d)\n", len, getpid());
+	PKT_PRINT("(len=%d)(pid=%d)\r\n", len, getpid());
     while (offset < len) {
         PKT_PRINT("/*%04x*/ ", offset);
         thisline = len - offset;
@@ -577,15 +574,18 @@ void pr_hexdump(const char* p, int len)
 
             PKT_PRINT("%c", (line[i] >= 0x20 && line[i] < 0x7f) ? line[i] : '.');
         }
-        PKT_PRINT("|\n");
+        PKT_PRINT("|\r\n");
         offset += thisline;
         line += thisline;
     }
-    PKT_PRINT("\n");
+    PKT_PRINT("\r\n");
 }
 
 void pr_rqst_hexdump(const char *p, int len)
 {
+    if (log_level < SYSLOG_LEVEL_DEBUG3)
+        return;
+
 	PKT_PRINT("wfd requst pkt ====>");
 	pr_hexdump(p, len);
 }
@@ -593,6 +593,9 @@ void pr_rqst_hexdump(const char *p, int len)
 
 void pr_rspd_hexdump(const char *p, int len)
 {
+    if (log_level < SYSLOG_LEVEL_DEBUG3)
+        return;
+
 	PKT_PRINT("rfd respond pkt ====>");
 	pr_hexdump(p, len);
 }
