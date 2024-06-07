@@ -5,21 +5,32 @@
 
 START_TEST(test_scp_file_info_parser)
 {
+    Channel c = {0};
+    proxy_scp_st *scp_data = proxy_scp_pd_create();
+    c.proxy_data = scp_data;
+
+
     int ret = 0;
 
     char buf1[] = {
         /*0000*/ 0x43,0x30,0x36,0x34,0x34,0x20,0x38,0x20,  0x72,0x65,0x73,0x75,0x6c,0x74,0x2e,0x74, //|C0644 8   result.t|
         /*0010*/ 0x78,0x74,0x0a,                                                                    //|xt.|
     };
-    ret = scp_file_info_parser(NULL, buf1, sizeof(buf1));
+    ret = scp_file_info_parser(&c, buf1, sizeof(buf1));
     ck_assert_msg(ret > 0, "scp_file_info parser error");
+    ck_assert_msg(scp_data->file_total_len == 8, "scp_data->file_total_len[%d] != 8", scp_data->file_total_len);
+    ck_assert_msg(scp_data->cur_len == 0, "scp_data->cur_len[%d] != 0", scp_data->cur_len);
+    ck_assert_msg(strcmp(scp_data->file_name, "result.txt") == 0, "scp_data->file_name[%s] != result.txt", scp_data->file_name);
 
     char buf2[] = {
         /*0000*/ 0x43,0x30,0x36,0x34,0x34,0x20,0x38,0x20,  0x72,0x65,0x73,0x75,0x6c,0x74,0x2e,0x74, //|C0644 8   result.t|
         /*0010*/ 0x78,0x74,0x0a,0xff,0xfe,0x31,0x00,0x32,  0x00,0x33,0x00,0x00,                     //|xt...1.2  .3..|
     };
-    ret = scp_file_info_parser(NULL, buf2, sizeof(buf2));
+    ret = scp_file_info_parser(&c, buf2, sizeof(buf2));
     ck_assert_msg(ret == 0, "scp_file_info parser error");
+    ck_assert_msg(scp_data->file_total_len == 8, "scp_data->file_total_len[%d] != 8", scp_data->file_total_len);
+    ck_assert_msg(scp_data->cur_len >= 8, "scp_data->cur_len[%d] != 0", scp_data->cur_len);
+    ck_assert_msg(strcmp(scp_data->file_name, "result.txt") == 0, "scp_data->file_name[%s] != result.txt", scp_data->file_name);
 
     char buf3[] = {
         /*0000*/ 0x43,0x30,0x36,0x37,0x34,0x20,0x38,0x31,  0x32,0x35,0x20,0x49,0x6e,0x73,0x74,0x61, //|C0674 81  25 Insta|
@@ -533,8 +544,37 @@ START_TEST(test_scp_file_info_parser)
         /*1fc0*/ 0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,  0x7d,0x20,0x20,0x0d,0x0a,0x20,0x20,0x20, //|          }  ..   |
         /*1fd0*/ 0x20,0x7d,0x20,0x20,0x0d,0x0a,0x7d,0x20,  0x20,0x00,                               //| }  ..}    .|
     };
-    ret = scp_file_info_parser(NULL, buf3, sizeof(buf3));
+    ret = scp_file_info_parser(&c, buf3, sizeof(buf3));
     ck_assert_msg(ret == 0, "scp_file_info parser error");
+    ck_assert_msg(scp_data->file_total_len == 8125, "scp_data->file_total_len[%d] != 8125", scp_data->file_total_len);
+    ck_assert_msg(scp_data->cur_len >= 8125, "scp_data->cur_len[%d] < 8125", scp_data->cur_len);
+    ck_assert_msg(strcmp(scp_data->file_name, "InstallCert.java") == 0, "scp_data->file_name[%s] != InstallCert.java", scp_data->file_name);
+
+}
+END_TEST
+
+START_TEST(test_is_scp_file_flag)
+{
+    const char buf1[] = {
+        /*0000*/ 0x57,0x69,0x6e,0x53,0x43,0x50,0x3a,0x20,  0x74,0x68,0x69,0x73,0x20,0x69,0x73,0x20, //|WinSCP:   this is |
+        /*0010*/ 0x62,0x65,0x67,0x69,0x6e,0x2d,0x6f,0x66,  0x2d,0x66,0x69,0x6c,0x65,0x0a,           //|begin-of  -file.|
+    };
+
+
+    const char buf2[] = {
+        /*0000*/ 0x00,0x57,0x69,0x6e,0x53,0x43,0x50,0x3a,  0x20,0x74,0x68,0x69,0x73,0x20,0x69,0x73, //|.WinSCP:   this is|
+        /*0010*/ 0x20,0x65,0x6e,0x64,0x2d,0x6f,0x66,0x2d,  0x66,0x69,0x6c,0x65,0x3a,0x30,0x0a,      //| end-of-  file:0.|
+    };
+
+
+
+    int ret = is_scp_file_begin(buf1, sizeof(buf1) - 1);
+    ck_assert_msg(ret == 1, "is_scp_file_begin error");
+
+
+    ret = is_scp_file_end(buf2, sizeof(buf2) - 1);
+    ck_assert_msg(ret == 1, "is_scp_file_end error");
+
 }
 END_TEST
 
@@ -544,6 +584,7 @@ Suite *make_suite(void)
     TCase *tc = tcase_create("cmd-scp-test");
 
     tcase_add_test(tc, test_scp_file_info_parser);
+    tcase_add_test(tc, test_is_scp_file_flag);
 
 
     suite_add_tcase(s, tc);

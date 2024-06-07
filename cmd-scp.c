@@ -7,21 +7,9 @@
 #include <stdlib.h>
 #include <limits.h>
 
-/**
-A. 输入
-    1. 默认命令集 [ + （文件 or 目录）] + 动作
-    2. 数据包
-
-A2B 处理:
-    1. 操作的文件名称审计
-    2. 命令集是否匹配，动作是什么
-    3.
-
-
-B. 输出
-    1. 告警日志
-    2. 事件日志
- */
+#define SCP_FILE_PATH_MAX   1024
+#define SCP_FILE_NAME_MAX   256
+#define SCP_PROXY_DIRECT    0
 
 typedef enum {
     SCP_STATE_INIT = 0,
@@ -51,14 +39,13 @@ typedef enum scp_type_em {
 typedef int (*scp_cmd_cb)(Channel *c, const char *buf, int len);
 
 struct proxy_scp_st {
-    int type;               /* 命令类型 */
-    int scp_dir;            /* 文件传输方向  0：下载     1：上传 */
-    char file_path[1024];   /* 文件在服务器上的完整路径 */
-    char filej_name[256];   /* 文件名称 */
-    int file_total_len;     /* 文件内容总长度 */
-    int cur_len;            /* 当前已处理的长度 */
-    int scp_state;          /*  */
-    scp_cmd_cb sc_handler;  /* 回包处理函数 */
+    int type;                               /* 命令类型 */
+    int scp_dir;                            /* 文件传输方向  0：下载     1：上传 */
+    char file_path[SCP_FILE_PATH_MAX];      /* 文件在服务器上的完整路径 */
+    char file_name[SCP_FILE_NAME_MAX];      /* 文件名称 */
+    int file_total_len;                     /* 文件内容总长度 */
+    int cur_len;                            /* 当前已处理的长度 */
+    scp_cmd_cb sc_handler;                  /* 回包处理函数 */
 };
 
 proxy_scp_st *proxy_scp_pd_create()
@@ -96,11 +83,26 @@ scp_cmds_st scp_cmds[] = {
     {0, SCP_TYPE_MV,        NULL,                           "mv -f \"" }
 };
 
-#define WINSCP_FILE_BEGIN_FLAG  "WinSCP: this is begin-of-file."
+#define WINSCP_FILE_BEGIN_FLAG  "WinSCP: this is begin-of-file"
 #define WINSCP_FILE_END_FLAG    "WinSCP: this is end-of-file:"
 
 static int scp_cmd_pwd_handler(Channel *c, const char *buf, int len)
 {
+    proxy_scp_st *scp_data = (proxy_scp_st *)c->proxy_data;
+
+    int i = 0;
+    for (; i < len; ++i) {
+        if (buf[i] != '\n') {
+            continue;
+        }
+
+        if (i <= SCP_FILE_PATH_MAX) {
+            snprintf(scp_data->file_path, i, "%s", buf);
+        } else {
+            snprintf(scp_data->file_path, SCP_FILE_PATH_MAX, "%s", buf);
+        }
+    }
+
     return 0;
 }
 
@@ -123,8 +125,24 @@ static int is_split_flag(const char *buf, int len)
     return 0;
 }
 
+static const char *strip_head_nul_chr(const char *buf, int len)
+{
+    int i = 0;
+    char *start = buf;
+    for (; i < len && buf[i] == '\0'; ++i);
+    if (i >= len)
+        return NULL;
+
+    return buf + i;
+}
+
 static int is_scp_file_begin(const char *buf, int len)
 {
+    buf = strip_head_nul_chr(buf, len);
+    if (buf == NULL) {
+        return 0;
+    }
+
     if (strncmp(buf, WINSCP_FILE_BEGIN_FLAG, sizeof(WINSCP_FILE_BEGIN_FLAG) - 1) == 0) {
         return 1;
     }
@@ -134,6 +152,11 @@ static int is_scp_file_begin(const char *buf, int len)
 
 static int is_scp_file_end(const char *buf, int len)
 {
+    buf = strip_head_nul_chr(buf, len);
+    if (buf == NULL) {
+        return 0;
+    }
+
     if (strncmp(buf, WINSCP_FILE_END_FLAG, sizeof(WINSCP_FILE_END_FLAG) - 1) == 0) {
         return 1;
     }
@@ -212,6 +235,7 @@ static int scp_file_info_parser(Channel *c, const char *buf, int len)
     int i = 0;
     char *endptr = buf + len;
     char *flagptr = NULL;
+    proxy_scp_st *scp_data = (proxy_scp_st *)c->proxy_data;
 
     /* skip file permison string */
     for (; (i < len) && (buf[i] != 0x20); ++i);
@@ -228,6 +252,7 @@ static int scp_file_info_parser(Channel *c, const char *buf, int len)
         logit_p("filesize[%d] invalid  or  end flag not 0x20", filesize);
         return -1;
     }
+    scp_data->file_total_len = filesize;
 
     /* parser file name */
     flagptr += 1;
@@ -237,13 +262,12 @@ static int scp_file_info_parser(Channel *c, const char *buf, int len)
         return -1;
     }
 
-    char filename[128] = {0};
-    if ((i + 1) <= sizeof(filename)) {
-        snprintf(filename, i + 1, "%s", flagptr);
+    if ((i + 1) <= SCP_FILE_NAME_MAX) {
+        snprintf(scp_data->file_name, i + 1, "%s", flagptr);
     } else {
-        snprintf(filename, sizeof(filename), "%s", flagptr);
+        snprintf(scp_data->file_name, SCP_FILE_NAME_MAX, "%s", flagptr);
     }
-    debug_p("filesize %d, filename %s", filesize, filename);
+    debug_p("filesize %d, filepath %s, filename %s", filesize, scp_data->file_path, scp_data->file_name);
 
     /* parser file content */
     flagptr = flagptr + i + 1;
@@ -251,6 +275,7 @@ static int scp_file_info_parser(Channel *c, const char *buf, int len)
     if (ctlen <= 0) {
         ctlen = 0;
     }
+    scp_data->cur_len = ctlen;
 
     int left = filesize - ctlen;
     debug_p("left size = %d", left);
@@ -263,7 +288,6 @@ static int scp_file_info_parser(Channel *c, const char *buf, int len)
     }
 }
 
-#define SCP_PROXY_DIRECT    1
 int cmd_scp_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
 {
 #if SCP_PROXY_DIRECT
@@ -274,6 +298,7 @@ int cmd_scp_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
     scp_cmds_st *cmditem = NULL;
     proxy_scp_st *scp_data = (proxy_scp_st *)c->proxy_data;
 
+    debug_p("scp start state=%d", c->proxy_state);
     switch (c->proxy_state) {
     case PROXY_STATE_LOGIN:
         c->proxy_state = SCP_STATE_INIT;
@@ -306,16 +331,16 @@ int cmd_scp_wfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         }
         break;
     case SCP_STATE_DATA_UP:
-        c->proxy_state = SCP_STATE_DATA_UP_END;
-        break;
-    case SCP_STATE_DATA_DOWN_END:
-        if (is_scp_file_end(buf, len)) {
-            c->proxy_state = SCP_STATE_INIT;
+        scp_data->cur_len += len;
+        debug_p("len=%d, curlen=%d, total=%d", len, scp_data->cur_len, scp_data->file_total_len);
+        if (scp_data->cur_len >= scp_data->file_total_len) {
+            c->proxy_state = SCP_STATE_DATA_UP_END;
         }
         break;
     default:
         break;
     }
+    debug_p("scp end state=%d", c->proxy_state);
 
     return 0;
 }
@@ -329,6 +354,7 @@ int cmd_scp_rfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
     int ret = 0;
     proxy_scp_st *scp_data = (proxy_scp_st *)c->proxy_data;
 
+    debug_p("scp start state=%d", c->proxy_state);
     switch (c->proxy_state) {
     case PROXY_STATE_LOGIN:
         c->proxy_state = SCP_STATE_INIT;
@@ -358,14 +384,21 @@ int cmd_scp_rfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
         }
         break;
     case SCP_STATE_DATA_DOWN:
-        c->proxy_state = SCP_STATE_DATA_DOWN_END;
+        scp_data->cur_len += len;
+        debug_p("len=%d, curlen=%d, total=%d", len, scp_data->cur_len, scp_data->file_total_len);
+        if (scp_data->cur_len >= scp_data->file_total_len) {
+            c->proxy_state = SCP_STATE_DATA_DOWN_END;
+        }
+
         break;
     case SCP_STATE_DATA_UP_END:
+    case SCP_STATE_DATA_DOWN_END:
         if (is_scp_file_end(buf, len)) {
             c->proxy_state = SCP_STATE_INIT;
         }
         break;
     case SCP_STATE_CMD_RSPD:
+        c->proxy_state = SCP_STATE_INIT;
         if (scp_data->sc_handler == NULL) {
             break;
         }
@@ -375,6 +408,7 @@ int cmd_scp_rfd_handle(struct ssh *ssh, Channel *c, const char *buf, int len)
     default:
         break;
     }
+    debug_p("scp end state=%d", c->proxy_state);
 
     return 0;
 }
