@@ -568,11 +568,11 @@ START_TEST(test_is_scp_file_flag)
 
 
 
-    int ret = is_scp_file_begin(buf1, sizeof(buf1) - 1);
+    int ret = is_scp_file_begin(buf1, sizeof(buf1));
     ck_assert_msg(ret == 1, "is_scp_file_begin error");
 
 
-    ret = is_scp_file_end(buf2, sizeof(buf2) - 1);
+    ret = is_scp_file_end(buf2, sizeof(buf2));
     ck_assert_msg(ret == 1, "is_scp_file_end error");
 
 }
