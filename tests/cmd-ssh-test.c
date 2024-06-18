@@ -592,7 +592,7 @@ int main()
 	srunner_run_all(sr, CK_VERBOSE);
 	nf = srunner_ntests_failed(sr);
 
-	free_ast_memory();
+
 	srunner_free(sr);
 	return nf;
 }
